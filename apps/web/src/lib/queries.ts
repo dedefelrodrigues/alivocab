@@ -45,3 +45,24 @@ export const themeQuery = (id: string) =>
     queryKey: ['themes', id],
     queryFn: () => unwrap(api.themes[':id'].$get({ param: { id } })),
   });
+
+const tzOffset = () => String(new Date().getTimezoneOffset());
+
+export const reviewSummaryQuery = queryOptions({
+  queryKey: ['review', 'summary'],
+  queryFn: () => unwrap(api.review.summary.$get({ query: { tzOffset: tzOffset() } })),
+  refetchInterval: 5 * 60_000,
+});
+
+/** A session's queue is fetched once; grading updates the server, not this snapshot. */
+export const reviewQueueQuery = (themeId: string | undefined, session: number) =>
+  queryOptions({
+    queryKey: ['review', 'queue', themeId ?? 'all', session],
+    queryFn: () =>
+      unwrap(
+        api.review.queue.$get({ query: { tzOffset: tzOffset(), ...(themeId ? { themeId } : {}) } }),
+      ),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });

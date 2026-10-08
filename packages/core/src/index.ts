@@ -1,4 +1,7 @@
 export { BATCH_SEPARATOR } from './import/extract.ts';
 export * from './import/parse.ts';
 export * from './prompts/vocabProposal.ts';
+export * from './srs/scheduler.ts';
+export * from './srs/seed.ts';
+export * from './srs/status.ts';
 export * from './text/normalize.ts';

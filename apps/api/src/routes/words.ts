@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getOrCreateProfile } from '../lib/profile.ts';
+import { reseedCards } from '../lib/srs.ts';
 import { validate } from '../lib/validate.ts';
 import { isSharedWithOthers } from '../lib/vocab.ts';
 import { requireAuth } from '../middleware/auth.ts';
@@ -29,10 +30,14 @@ export const wordRoutes = ({ db, auth }: AppDeps) => {
       const userId = c.get('user').id;
       const own = findOwn(userId, c.req.param('lexemeId'));
       const { status } = c.req.valid('json');
-      db.update(userLexemes)
-        .set({ status, statusSource: 'manual' })
-        .where(and(eq(userLexemes.userId, userId), eq(userLexemes.lexemeId, own.lexemeId)))
-        .run();
+      db.transaction((tx) => {
+        tx.update(userLexemes)
+          .set({ status, statusSource: 'manual' })
+          .where(and(eq(userLexemes.userId, userId), eq(userLexemes.lexemeId, own.lexemeId)))
+          .run();
+        // A manual re-tag restarts scheduling from the tag's starting point.
+        if (status !== own.status) reseedCards(tx, userId, own.lexemeId, status, new Date());
+      });
       return c.json({ lexemeId: own.lexemeId, status });
     })
     .patch('/:lexemeId', validate('json', wordUpdateSchema), (c) => {

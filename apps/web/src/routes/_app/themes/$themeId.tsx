@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
+  Layers,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -160,7 +161,12 @@ function ThemePage() {
       <StatusBar counts={theme.counts} />
 
       <div className="flex flex-wrap gap-2">
-        <Button asChild>
+        <Button asChild disabled={!theme.wordCount}>
+          <Link to="/review" search={{ themeId: theme.id }}>
+            <Layers /> Review this theme
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
           <Link to="/themes/new" search={{ themeId: theme.id }}>
             <Sparkles /> Add more words
           </Link>

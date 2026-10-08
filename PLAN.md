@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phase 2 done** (themes, generation, import, tagging). Next: Phase 3 (SRS + flashcards, MVP). Each phase ends in a usable, committed state.
+Status: **Phase 3 done: MVP** (SRS + flashcards). Next: Phase 4 (multiple choice, cloze, lessons, stats). Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -201,10 +201,13 @@ the reason, and the valid rows still import.
 
 ### 5.3 Derived status (`core/srs/status.ts`)
 - `known`: both cards in review state with stability ≥ 21d and no lapse in the last 3 reviews.
-- `recognize`: the recognition card is stable (≥ 7d) and the recall card is not.
+- `recognize`: the recognition card is stable (≥ 4d, the stability a "recognize" tag seeds) and the recall card is not.
 - `unknown`: anything else, or two or more consecutive lapses.
-- A manual tag change sets `status_source = manual` and re-seeds the cards (after a confirm dialog).
-  Status derivation skips manual statuses until the next lapse.
+- A manual tag change sets `status_source = manual` and re-seeds both cards from the new tag
+  (no confirm dialog: the review history stays in `review_logs`).
+- After each review the status only moves in the direction of the result (`core/srs/status.ts`):
+  a success can raise it, a failure can lower it. A manual "known" isn't downgraded by an easy
+  answer, and a manual "don't know" still climbs as the cards are learned.
 
 ### 5.4 Daily queue
 `/api/review/queue?themeId=&limit=` returns due cards first (ordered by due date and retrievability),
@@ -375,13 +378,18 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > your own key and device.
 
 ### Phase 3: SRS + flashcards (**MVP**)
-- [ ] `ts-fsrs` integration, `core/srs/seed` + `status` (unit-tested)
-- [ ] Card creation on save, review queue endpoint, grade endpoint (writes review_log + exposure)
-- [ ] Flashcards UI (both directions, flip, 4 ratings, TTS button, swipe, shortcuts)
-- [ ] Dashboard: due today, new available, per-theme progress (unknown/recognize/known bars)
-- [ ] PWA manifest + icons + offline shell
+- [x] `ts-fsrs` integration, `core/srs/seed` + `status` (unit-tested)
+- [x] Card creation on save, review queue endpoint, grade endpoint (writes review_log + exposure)
+- [x] Flashcards UI (both directions, flip, 4 ratings, TTS button, swipe, shortcuts)
+- [x] Dashboard: due today, new available, per-theme progress (unknown/recognize/known bars)
+- [x] PWA manifest + icons + offline shell
 
 **Done when** daily reviews work end-to-end on mobile and status changes based on performance.
+
+> Notes: cards are backfilled for words saved before SRS existed. "Today" uses the client's time
+> zone (`tzOffset`). In a session, "Again" comes back three cards later and other learning steps at the
+> end. The offline shell caches the app only: reviewing offline (queued grades) is a later item.
+> The service worker is only active in production builds.
 
 ### Phase 4: MCQ, cloze, lessons, stats
 - [ ] Distractor selection (`core/exercises/mcq`), cloze builder, answer checker (diacritic-aware, Levenshtein ≤ 1 typo tolerance → `Hard`)

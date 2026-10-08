@@ -1,7 +1,7 @@
 import type { ColorMode } from '@alivocab/shared/appearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { BookOpen, Home, LogOut, Monitor, Moon, Settings, Shield, Sun } from 'lucide-react';
+import { BookOpen, Home, Layers, LogOut, Monitor, Moon, Settings, Shield, Sun } from 'lucide-react';
 import { useAppearance } from '@/appearance/AppearanceProvider';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useUpdateProfile } from '@/hooks/useProfile';
 import { authClient } from '@/lib/auth-client';
-import { meQuery } from '@/lib/queries';
+import { meQuery, reviewSummaryQuery } from '@/lib/queries';
 
 const NEXT_MODE: Record<ColorMode, ColorMode> = { system: 'light', light: 'dark', dark: 'system' };
 const MODE_ICON = { system: Monitor, light: Sun, dark: Moon } as const;
@@ -24,6 +24,8 @@ const navLinkClass =
 
 export function AppHeader() {
   const { data: me } = useQuery(meQuery);
+  const { data: summary } = useQuery(reviewSummaryQuery);
+  const pending = (summary?.dueNow ?? 0) + (summary?.newAvailable ?? 0);
   const { mode } = useAppearance();
   const updateProfile = useUpdateProfile();
   const queryClient = useQueryClient();
@@ -46,6 +48,16 @@ export function AppHeader() {
           <Link to="/" className={navLinkClass} activeOptions={{ exact: true }}>
             <Home className="size-4" />
             <span className="hidden sm:inline">Home</span>
+          </Link>
+          <Link to="/review" className={navLinkClass} search={{}}>
+            <Layers className="size-4" />
+            <span className="hidden sm:inline">Review</span>
+            {pending > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground tabular-nums">
+                {pending > 99 ? '99+' : pending}
+                <span className="sr-only"> cards to review</span>
+              </span>
+            )}
           </Link>
           <Link to="/themes" className={navLinkClass}>
             <BookOpen className="size-4" />

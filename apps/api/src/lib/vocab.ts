@@ -18,6 +18,7 @@ import {
 } from '@alivocab/shared';
 import { and, asc, eq, inArray, max, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { createCards, reseedCards } from './srs.ts';
 
 const {
   lexemes,
@@ -420,12 +421,14 @@ export function saveWords(db: Db, opts: SaveOptions): { added: number; linked: n
           })
           .run();
         tx.insert(exposures).values({ userId: opts.userId, lexemeId, context: 'proposal' }).run();
+        createCards(tx, opts.userId, lexemeId, status, now);
         added++;
       } else if (status !== 'untagged' && status !== own.status) {
         tx.update(userLexemes)
           .set({ status, statusSource: 'manual' })
           .where(and(eq(userLexemes.userId, opts.userId), eq(userLexemes.lexemeId, lexemeId)))
           .run();
+        reseedCards(tx, opts.userId, lexemeId, status, now);
       }
     });
 

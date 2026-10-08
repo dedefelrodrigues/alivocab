@@ -111,6 +111,10 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   records the user's tag. Never insert into `lexemes` directly from a route.
 - AI output of any origin goes through `parseVocabulary()` (`packages/core/src/import`). When a new
   messy-output case shows up, add it to `parse.test.ts` first.
+- Scheduling: FSRS math only in `packages/core/src/srs` (plain `CardState`, no ts-fsrs types leak).
+  `apps/api/src/lib/srs.ts` owns the queue, grading and summary. Every graded interaction must go
+  through `gradeCard()`, which writes the review log, the exposure, the counters and the status.
+  New words get cards via `createCards()` in `saveWords()`. Manual re-tags call `reseedCards()`.
 - `packages/ai` is server-only (AI SDK + provider SDKs). In-browser models live in
   `apps/web/src/features/browser-ai` and are lazy-loaded (WebLLM is about 6 MB).
 - The web app calls the API via `api` (Hono RPC) + `unwrap()` (`src/lib/api.ts`). Query options

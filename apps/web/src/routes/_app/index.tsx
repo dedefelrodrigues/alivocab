@@ -1,9 +1,10 @@
 import { languageName } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Bot, Layers, Plus, Settings } from 'lucide-react';
+import { Bot, Plus, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ReviewSummaryCard } from '@/features/review/ReviewSummaryCard';
 import { ThemeCard } from '@/features/themes/ThemeCard';
 import { credentialsQuery, meQuery, themesQuery } from '@/lib/queries';
 
@@ -28,6 +29,8 @@ function HomePage() {
           {languageName(profile.nativeLang)}
         </p>
       </section>
+
+      <ReviewSummaryCard />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -59,15 +62,6 @@ function HomePage() {
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <Layers className="size-5 text-primary" />
-            <CardTitle>Reviews</CardTitle>
-            <CardDescription>
-              Flashcards with spaced repetition. Coming in the next phase.
-            </CardDescription>
-          </CardHeader>
-        </Card>
         <Card>
           <CardHeader>
             <Bot className="size-5 text-primary" />

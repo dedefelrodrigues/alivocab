@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+*.log
+.DS_Store
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# local data
+data/
+*.db
+*.db-shm
+*.db-wal
+tts-cache/
+
+# editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# playwright
+test-results/
+playwright-report/

@@ -1,0 +1,329 @@
+# AliVocab: Implementation Plan
+
+Status: **planning**. Nothing is implemented yet. Each phase ends in a usable, committed state.
+The core loop (MVP) is done at the end of **Phase 3**.
+
+---
+
+## 1. Decisions log
+
+| # | Topic | Decision |
+|---|-------|----------|
+| D1 | Framework | React SPA (Vite) + Hono API, pnpm + Turborepo monorepo, TypeScript end-to-end |
+| D2 | DB | SQLite (WAL) + Drizzle ORM + better-sqlite3 |
+| D3 | Auth | Email/password via Better Auth, cookie sessions, **invite codes** (admin-issued) |
+| D4 | API keys | Stored on the server, AES-256-GCM encrypted per user. AI calls go through the backend |
+| D5 | Languages | Per-user `target_lang` (default `pl`) + `native_lang` (e.g. `en`, `pt`). UI in English |
+| D6 | Word data | lemma, translation(s), POS, gender, aspect / aspect pair, grammatical forms, example sentences, pronunciation, notes / mnemonic |
+| D7 | Data sharing | Shared dictionary of lexemes. Themes, tags, SRS state and exposures are private per user |
+| D8 | SRS | FSRS (`ts-fsrs`), two cards per word (recognition and recall) |
+| D9 | Tags → SRS | Tags seed the initial FSRS state, then the status is derived from performance (manual override allowed) |
+| D10 | AI sources | (a) API providers: Claude, OpenAI, DeepSeek, Gemini free tier, OpenRouter (incl. `:free` models), custom OpenAI-compatible; (b) in-browser: WebLLM + Chrome built-in AI; (c) copy-prompt → paste CSV/JSON |
+| D11 | TTS | Web Speech API by default. Optional cloud TTS with your own key, audio cached on the server |
+| D12 | Exercise content | Hybrid: deterministic where possible (flashcards, MCQ, cloze from stored sentences). AI output (scripts, grammar notes, new sentences) is cached in the DB |
+| D13 | Hosting | VPS / home server, Docker + Caddy, SQLite on a volume, Litestream / nightly backups |
+| D14 | Name | **AliVocab**, package scope `@alivocab/*` |
+| D15 | Exercise roadmap | Flashcards, MCQ, fill-in, listening, declension/conjugation drills, sentence building/translation, AI role-play |
+
+### Open questions (decide when we reach that phase)
+- Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
+- Q2. Usage limits per user for server-paid AI, if you ever provide a shared key: probably not needed (BYOK only).
+- Q3. A native mobile wrapper (Capacitor) later, or is the PWA enough?
+- Q4. UI translation (i18n) into Portuguese/Polish: strings are centralized now, translations come later.
+
+---
+
+## 2. Architecture
+
+```
+┌──────────── Browser (PWA) ─────────────┐        ┌──────────── apps/api (Hono, Node 24) ────────────┐
+│ React + TanStack Router/Query          │  HTTPS │ /api/auth/*      Better Auth (+ invite gate)     │
+│ Hono RPC client (typed)                │◄──────►│ /api/settings    user prefs, AI credentials      │
+│ Web Speech TTS                         │ cookie │ /api/themes      themes, proposals, tagging      │
+│ WebLLM / Chrome AI (optional, local)   │        │ /api/import      paste/browser-AI ingestion      │
+│ Copy-prompt / paste-import UI          │        │ /api/review      SRS queue, grading              │
+└────────────────────────────────────────┘        │ /api/lessons     exercises, scripts, drills      │
+                                                  │ /api/tts         cloud TTS proxy + cache         │
+                                                  │ packages/ai ──► Anthropic/OpenAI/DeepSeek/...    │
+                                                  │ packages/db ──► SQLite file (/data)              │
+                                                  └──────────────────────────────────────────────────┘
+```
+
+- In production, a single Node process serves `/api/*` and the static SPA build.
+- **One ingestion path**: whatever the AI source is, the raw text or object goes through
+  `core/import` (tolerant parser → zod validation → normalization → dedupe) before it is stored.
+  The only difference is who calls the model: the server for API providers, the browser for
+  local models, a human for copy-paste.
+
+---
+
+## 3. Data model (Drizzle / SQLite)
+
+Auth tables (`user`, `session`, `account`, `verification`) are created by Better Auth. App tables:
+
+```
+invite_codes        id, code (unique), created_by, max_uses, uses, expires_at, created_at
+user_profiles       user_id PK, role (admin|user), target_lang, native_lang,
+                    default_word_count (30), default_ai_source, tts_provider, tts_voice,
+                    daily_new_limit (20), daily_review_limit (200), created_at, updated_at
+ai_credentials      id, user_id, provider (anthropic|openai|deepseek|google|openrouter|openai_compat),
+                    label, base_url?, default_model, key_ciphertext, key_iv, key_tag, key_last4,
+                    created_at, updated_at
+
+lexemes             id, lang, lemma, normalized_lemma, pos, gender?, aspect?, aspect_pair_lemma?,
+                    forms_json?, pronunciation?, frequency_rank?, created_at
+                    UNIQUE(lang, normalized_lemma, pos)
+lexeme_translations id, lexeme_id, lang, text, sort
+                    UNIQUE(lexeme_id, lang, text)
+example_sentences   id, lexeme_id, lang, text, translation, translation_lang,
+                    cloze_target (word form as it appears in the sentence), source (ai|user|import), created_at
+
+themes              id, user_id, name, slug, description?, target_lang, native_lang,
+                    visibility (private), created_at, updated_at
+                    UNIQUE(user_id, slug)
+theme_lexemes       theme_id, lexeme_id, position, added_at, generation_id?
+                    PK(theme_id, lexeme_id)
+
+user_lexemes        user_id, lexeme_id, status (untagged|unknown|recognize|known),
+                    status_source (manual|derived), note?, mnemonic?,
+                    exposure_count, correct_count, incorrect_count, first_seen_at, last_seen_at
+                    PK(user_id, lexeme_id)
+cards               id, user_id, lexeme_id, direction (recognition|recall),
+                    due, stability, difficulty, elapsed_days, scheduled_days,
+                    reps, lapses, state, last_review, suspended
+                    UNIQUE(user_id, lexeme_id, direction)
+review_logs         id, card_id, user_id, rating (1-4), exercise_type, correct, response_ms,
+                    answer_given?, reviewed_at, fsrs snapshot (state/due/stability before)
+exposures           id, user_id, lexeme_id, context (flashcard|mcq|cloze|listening|drill|
+                    sentence|roleplay|proposal), lesson_id?, at
+
+ai_generations      id, user_id, kind (vocab_proposal|example_sentences|listening_script|
+                    grammar_note|drill|sentence_grade|roleplay), source (api|browser|manual),
+                    provider?, model?, prompt_version, prompt, raw_output, parsed_ok,
+                    error?, tokens_in?, tokens_out?, created_at
+lessons             id, user_id, theme_id, kind (listening|grammar|drill|sentence|roleplay),
+                    title, content_json, generation_id?, created_at
+lesson_lexemes      lesson_id, lexeme_id
+tts_cache           hash (text+lang+provider+voice) PK, file_path, mime, bytes, created_at
+```
+
+Indexes: `cards(user_id, due)`, `user_lexemes(user_id, status)`, `theme_lexemes(lexeme_id)`,
+`exposures(user_id, lexeme_id)`, `review_logs(user_id, reviewed_at)`.
+
+---
+
+## 4. Vocabulary generation & import
+
+### 4.1 Proposal flow (UI)
+1. **New theme** → name and optional description, word count (slider 5–100, default from settings),
+   difficulty hint (A1–C1), and AI source (the provider list from settings, *Browser model*, or
+   *Copy prompt*).
+2. The prompt is built by `core/prompts/vocabProposal.ts` and contains the target/native language,
+   count, CEFR level, the required output schema, and an *avoid list* (lemmas the user already
+   has in this theme). The prompt asks for **JSON** (primary) and accepts CSV as a fallback.
+3. Generation:
+   - **API**: the server calls the provider with AI SDK structured output (`generateObject` / output
+     schema) against the zod schema. Counts above 30 are split into batches of ~25 run in sequence,
+     with the avoid list growing between batches.
+   - **Browser**: WebLLM (e.g. Qwen2.5-3B / Llama-3.2-3B) or Chrome's `LanguageModel` runs the
+     same prompt, and the raw text is POSTed to `/api/import`.
+   - **Manual**: the UI shows the prompt with a *Copy* button. The user pastes the reply into a
+     textarea → `/api/import`.
+4. **Review screen**: a list or one card at a time (mobile). Each row shows the lemma, translation,
+   POS/gender and an example, with three big buttons: *Known* / *Recognize* / *Don't know* (keys
+   1/2/3), plus *Edit* and *Discard*. Words already in the user's dictionary show a "already
+   learning — linked" badge with their current status. Bulk actions: "mark remaining as …".
+5. **Save** → upsert lexemes (dedupe), link `theme_lexemes`, upsert `user_lexemes`, and create or
+   seed `cards` (see §5.2).
+
+### 4.2 Import formats (documented in-app, accepted by `core/import`)
+JSON (preferred):
+```json
+{ "words": [ {
+  "lemma": "chleb", "pos": "noun", "gender": "m",
+  "translations": ["bread"],
+  "forms": { "gen_sg": "chleba", "nom_pl": "chleby" },
+  "pronunciation": "xlɛp",
+  "examples": [ { "text": "Kupiłem świeży chleb.", "translation": "I bought fresh bread.", "cloze": "chleb" } ],
+  "notes": "Final -b devoices to [p]."
+} ] }
+```
+CSV (header required; `;` or `,` auto-detected; quoted fields OK; `|` separates multi-values;
+`forms` as `key=value|key=value`):
+```
+lemma;translation;pos;gender;aspect;aspect_pair;forms;pronunciation;example;example_translation;notes
+chleb;bread;noun;m;;;gen_sg=chleba|nom_pl=chleby;xlɛp;Kupiłem świeży chleb.;I bought fresh bread.;
+```
+The parser is tolerant. It strips markdown code fences, leading prose and trailing commentary,
+and fixes trailing commas. Every row is validated individually, invalid rows are reported with
+the reason, and the valid rows still import.
+
+### 4.3 AI provider layer (`packages/ai`)
+- `ProviderId = anthropic | openai | deepseek | google | openrouter | openai_compat`.
+- `getModel(userId, credentialId?, modelOverride?)` decrypts the key and returns an AI SDK
+  `LanguageModel`.
+- Settings page: add/test/delete credentials (*Test* runs a tiny call), choose the default model per
+  provider, and a curated list of suggested models with an "enter any model id" fallback.
+- Errors (bad key, rate limit, refusal, invalid JSON) are mapped to user-friendly messages, and
+  the raw output is always stored in `ai_generations` so the user can retry parsing or edit it by hand.
+- Rate limit AI endpoints per user (simple token bucket in memory, later SQLite).
+
+---
+
+## 5. Learning engine
+
+### 5.1 Cards & ratings
+- Two cards per lexeme: **recognition** (see Polish → recall the meaning) and **recall** (see the
+  meaning → produce Polish).
+- Exercises map to FSRS ratings: wrong → `Again`, correct with hint or slow → `Hard`, correct →
+  `Good`, correct and fast (under a threshold) or self-rated easy → `Easy`. Flashcards use explicit
+  self-rating with 4 buttons.
+- Recognition-type exercises (MCQ PL→native, listening comprehension) grade the **recognition**
+  card. Production-type exercises (typing the Polish word, cloze, drills, sentence building) grade
+  the **recall** card.
+
+### 5.2 Tag seeding (`core/srs/seed.ts`)
+| Tag | recognition card | recall card |
+|-----|------------------|-------------|
+| Don't know | new, due now | new, due after the recognition card's first success |
+| Recognize | review state, stability ≈ 4d, due in 1–3d | new, due now |
+| Known | review state, stability ≈ 30d, due in 20–40d (fuzzed) | review state, stability ≈ 10d, due in 7–14d |
+
+### 5.3 Derived status (`core/srs/status.ts`)
+- `known`: both cards in review state with stability ≥ 21d and no lapse in the last 3 reviews.
+- `recognize`: the recognition card is stable (≥ 7d) and the recall card is not.
+- `unknown`: anything else, or two or more consecutive lapses.
+- A manual tag change sets `status_source = manual` and re-seeds the cards (after a confirm dialog).
+  Status derivation skips manual statuses until the next lapse.
+
+### 5.4 Daily queue
+`/api/review/queue?themeId=&limit=` returns due cards first (ordered by due date and retrievability),
+then new cards up to `daily_new_limit`. The queue can be filtered by theme, or run across all themes.
+
+### 5.5 Exposure tracking
+Every rendered word in an exercise or script writes an `exposures` row (batched, async) and bumps
+`user_lexemes.exposure_count`. The stats page shows exposures vs. reviews per word.
+
+---
+
+## 6. Exercises
+
+| Type | Phase | AI needed? | Notes |
+|------|-------|------------|-------|
+| Flashcards | 3 | no | Flip animation, 4-button rating, swipe on mobile, TTS button |
+| Multiple choice | 4 | no | Distractors: same theme + same POS (+ same gender for nouns) first, then the global pool. Both directions |
+| Fill-in (cloze) | 4 | optional | Uses `example_sentences.cloze_target`. Lemma hint and word bank, or free typing. Answers are diacritic-tolerant with a warning. If a word has no sentences, it gets them from AI on demand (cached) |
+| Listening scripts | 5 | yes (cached) | AI writes a short dialogue or monologue using N theme words at the user's level, with a transcript (hidden until revealed), comprehension MCQs and a word list. Playback uses Web Speech or cloud TTS per sentence, with speed control and per-speaker voices |
+| Grammar notes | 5 | yes (cached) | Per-theme mini lesson ("Instrumental after *z*", "aspect pairs of the verbs in this theme") using examples from the user's words |
+| Declension / conjugation drills | 5 | partly | Forms come from `lexemes.forms_json` (deterministic). Prompts like "kot → instrumental: Idę z ___". Missing forms are filled by AI and cached. Grades the recall card |
+| Sentence building | 6 | no / optional | Scrambled words → order them (deterministic, from stored examples) |
+| Translation | 6 | yes | Translate a short sentence. The AI grades it and returns corrections and an explanation (structured output) |
+| AI role-play | 6 | yes | Themed chat scenario. System prompt restricts vocabulary to theme words at the user's level and asks the model to correct mistakes inline. Words used are logged as exposures. Streams over SSE |
+
+Lesson builder (Phase 4+): "Start lesson on theme X" builds a 10–15 minute mix of due reviews +
+new words + one or two exercise types, then shows a summary screen.
+
+Other ideas for later: minimal-pair listening (sz/ś/ż/rz/cz/ć), typing/dictation, a "word of the day"
+push notification (PWA), streaks/heatmap, and Anki CSV export.
+
+---
+
+## 7. Auth & security
+- Better Auth email/password with scrypt hashing (the library default), HTTP-only `SameSite=Lax`
+  secure cookies, and session rotation.
+- **Invite gate**: a sign-up hook requires a valid `invite_code` and increments `uses` in a
+  transaction. The first user is bootstrapped as admin via `pnpm db:seed` / `ADMIN_EMAIL` env.
+- Admin page: create/revoke invite codes, list users, disable a user.
+- Rate limiting: auth endpoints (Better Auth built-in) and AI/import endpoints (per user).
+- Every user-scoped query filters by `user_id` (helper `scoped(db, userId)`), with tests that check
+  isolation between two users.
+- `APP_ENCRYPTION_KEY` (32-byte base64) for API keys and `BETTER_AUTH_SECRET`. Both are required at
+  boot, and the app refuses to start without them.
+- Secure headers via Hono (`secureHeaders`), with a CSP that allows the WebLLM model CDN only when it is enabled.
+- Password reset: admin-triggered reset link at first. Email (SMTP) is optional later.
+
+---
+
+## 8. Phases & milestones
+
+### Phase 0: Repository & tooling
+- [x] `git init`, `.gitignore`
+- [ ] `.editorconfig`, `.nvmrc` (24), `.env.example`
+- [ ] pnpm workspace + Turborepo; `apps/web`, `apps/api`, `packages/{db,core,shared,ai}`
+- [ ] Shared `tsconfig.base.json` (strict, ESM, `moduleResolution: bundler`), Biome, Vitest
+- [ ] Vite + React + Tailwind v4 + shadcn/ui init, TanStack Router; Vite dev proxy `/api → :3000`
+- [ ] Hono app with `/api/health`, typed RPC client wired into web
+- [ ] GitHub Actions CI: install → lint → typecheck → test → build
+- [ ] Create the GitHub repo with `gh repo create alivocab --private --source . --push` (when you're ready)
+
+**Done when** `pnpm dev` shows the web app calling `/api/health`, and CI is green.
+
+### Phase 1: Database, auth, settings
+- [ ] Drizzle schema (§3), first migration, `db:seed` (admin + invite + sample theme)
+- [ ] Better Auth + invite gate; login / register (with invite) / logout pages; route guards
+- [ ] Settings page: languages, default word count, daily limits, TTS voice picker (lists `speechSynthesis` voices for the target lang)
+- [ ] AI credentials CRUD with encryption + "Test connection"
+- [ ] Admin page: invite codes
+- [ ] Tests: crypto round-trip, invite gate, user-isolation
+
+**Done when** you can register with an invite, log in on phone and desktop, and save an encrypted API key.
+
+### Phase 2: Themes, generation, import, tagging
+- [ ] `core/prompts/vocabProposal` + snapshot tests
+- [ ] `core/import`: tolerant JSON/CSV parser + normalization + per-row validation report (heavily unit-tested with messy LLM outputs)
+- [ ] `packages/ai` provider registry (Anthropic, OpenAI, DeepSeek, Google, OpenRouter, OpenAI-compatible) + batching
+- [ ] Endpoints: create theme, generate (API), import (paste/browser), save tagged proposal
+- [ ] UI: new-theme wizard, AI-source picker, copy-prompt panel, paste box with live parse preview, review/tag screen (keyboard + mobile)
+- [ ] Browser AI: Chrome Prompt API detection, WebLLM with a model picker, download progress and a WebGPU capability check (lazy-loaded chunk)
+- [ ] Dedupe + multi-theme linking, "already learning" badges
+- [ ] Theme list + theme detail (words, status filter, edit word, add word manually)
+
+**Done when** a 30-word theme can be created via each of: API key, Gemini free key, copy-paste, browser model, and the words are tagged and stored.
+
+### Phase 3: SRS + flashcards (**MVP**)
+- [ ] `ts-fsrs` integration, `core/srs/seed` + `status` (unit-tested)
+- [ ] Card creation on save, review queue endpoint, grade endpoint (writes review_log + exposure)
+- [ ] Flashcards UI (both directions, flip, 4 ratings, TTS button, swipe, shortcuts)
+- [ ] Dashboard: due today, new available, per-theme progress (unknown/recognize/known bars)
+- [ ] PWA manifest + icons + offline shell
+
+**Done when** daily reviews work end-to-end on mobile and status changes based on performance.
+
+### Phase 4: MCQ, cloze, lessons, stats
+- [ ] Distractor selection (`core/exercises/mcq`), cloze builder, answer checker (diacritic-aware, Levenshtein ≤ 1 typo tolerance → `Hard`)
+- [ ] On-demand example-sentence generation (cached)
+- [ ] Lesson builder + session summary
+- [ ] Stats page: reviews/day, retention, exposures per word, streak
+
+### Phase 5: Listening, grammar, drills
+- [ ] Listening script generation (structured: speakers, lines, translation, questions) + player (Web Speech, per-line, speed)
+- [ ] Optional cloud TTS provider + `tts_cache` on disk
+- [ ] Grammar note generation per theme
+- [ ] Declension/conjugation drills from `forms_json` (+ AI fill of missing forms)
+
+### Phase 6: Sentence building, translation, role-play
+- [ ] Scrambled-sentence exercise
+- [ ] AI-graded translation (structured feedback)
+- [ ] Role-play chat with streaming (SSE), vocabulary-constrained system prompt, inline corrections
+
+### Phase 7: Hosting & operations
+- [ ] Multi-stage Dockerfile (build → slim runtime), `docker-compose.yml` with Caddy (auto-HTTPS), `/data` volume
+- [ ] Migrations on boot, health check, structured logs (pino)
+- [ ] Backups: Litestream to S3-compatible storage or a nightly `sqlite3 .backup` cron
+- [ ] Deployment guide in `docs/deploy.md`
+
+---
+
+## 9. Testing strategy
+- **Unit (Vitest)**: `core` (parsers with a corpus of real messy LLM outputs, normalization, SRS seeding and status, distractors, answer checking) and `ai` (provider mapping with mocked models).
+- **Integration**: Hono `app.request()` against an in-memory SQLite DB with migrations applied, covering auth, isolation, import and grading.
+- **E2E (Playwright, Phase 3+)**: register → create theme via paste → tag → review flashcards. Runs on desktop and mobile viewports.
+
+## 10. Risks & mitigations
+| Risk | Mitigation |
+|------|------------|
+| LLMs return malformed or inconsistent JSON/CSV | Structured output where supported, a tolerant parser, per-row validation, stored raw output with a re-parse/edit UI |
+| Small in-browser models produce poor Polish grammar (wrong gender/forms) | Label them "experimental" in the UI and let the user edit before saving. Suggest the copy-prompt flow for quality |
+| Web Speech has no pl-PL voice on some devices | Detect voices, warn, and offer cloud TTS |
+| Shared dictionary accumulates wrong data from one user's bad generation | Translations and examples carry the `source` and `generation_id`. Per-user edits are stored as user overrides if needed (revisit when multi-user is real) |
+| SQLite write contention | WAL mode, a single API process, short transactions. Fine for a small user base |

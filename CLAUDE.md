@@ -42,6 +42,12 @@ packages/
 docker/           Dockerfile, compose, Caddyfile
 ```
 
+Workspace packages are **source-only**: their `exports` point at `src/*.ts`. Vite, tsx and tsup
+compile them, and the API's tsup build bundles `@alivocab/*` into `dist/`. Relative imports use
+explicit `.ts` extensions. `apps/web/src/styles/palettes.generated.css` is generated from
+`packages/shared/src/appearance` on `dev`/`build` (gitignored). `routeTree.gen.ts` is generated
+by the TanStack Router plugin and committed.
+
 Rules for dependencies between packages:
 - `core` and `shared` are **pure**. No DB, no network, no Node-only APIs, so both web and api
   can use them.
@@ -53,7 +59,7 @@ Rules for dependencies between packages:
 
 ```bash
 pnpm install
-pnpm dev              # turbo: web (Vite :5173) + api (:3000) in parallel, Vite proxies /api
+pnpm dev              # turbo: web (Vite :5180) + api (:3180) in parallel, Vite proxies /api
 pnpm build
 pnpm test             # vitest across packages
 pnpm lint             # biome check

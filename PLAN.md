@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **planning**. Nothing is implemented yet. Each phase ends in a usable, committed state.
+Status: **Phase 0 done** (scaffolding). Next: Phase 1. Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -321,13 +321,13 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 
 ### Phase 0: Repository & tooling
 - [x] `git init`, `.gitignore`
-- [ ] `.editorconfig`, `.nvmrc` (24), `.env.example`
-- [ ] pnpm workspace + Turborepo; `apps/web`, `apps/api`, `packages/{db,core,shared,ai}`
-- [ ] Shared `tsconfig.base.json` (strict, ESM, `moduleResolution: bundler`), Biome, Vitest
-- [ ] Vite + React + Tailwind v4 + shadcn/ui init, TanStack Router; Vite dev proxy `/api → :3000`
-- [ ] Appearance foundation (§7): semantic token set, `palettes.ts` with `slate` + `pl` (light/dark), CSS generation, `<html>` class/`data-palette` switching, no-flash inline script, contrast test, CI check against raw color classes
-- [ ] Hono app with `/api/health`, typed RPC client wired into web
-- [ ] GitHub Actions CI: install → lint → typecheck → test → build
+- [x] `.editorconfig`, `.nvmrc` (24), `.env.example`
+- [x] pnpm workspace + Turborepo; `apps/web`, `apps/api`, `packages/{db,core,shared,ai}`
+- [x] Shared `tsconfig.base.json` (strict, ESM, `moduleResolution: bundler`), Biome, Vitest
+- [x] Vite + React + Tailwind v4 + shadcn/ui init, TanStack Router; Vite dev proxy `/api → :3180` (non-default ports: web 5180, api 3180)
+- [x] Appearance foundation (§7): semantic token set, `palettes.ts` with `slate` + `pl` (light/dark), CSS generation, `<html>` class/`data-palette` switching, no-flash inline script, contrast test, CI check against raw color classes
+- [x] Hono app with `/api/health`, typed RPC client wired into web
+- [x] GitHub Actions CI: install → lint → typecheck → test → build
 - [ ] Create the GitHub repo with `gh repo create alivocab --private --source . --push` (when you're ready)
 
 **Done when** `pnpm dev` shows the web app calling `/api/health`, and CI is green.

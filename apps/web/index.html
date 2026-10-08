@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AliVocab</title>
+    <script>
+      // Apply the cached palette + mode before first paint (no flash of wrong colors).
+      // The account setting replaces this once the app loads. Keep in sync with
+      // APPEARANCE_STORAGE_KEY and AppearanceProvider.
+      (() => {
+        try {
+          const s = JSON.parse(localStorage.getItem('alivocab.appearance') || '{}');
+          const mode = s.mode || 'system';
+          const dark =
+            mode === 'dark' ||
+            (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          const el = document.documentElement;
+          if (dark) el.classList.add('dark');
+          if (typeof s.palette === 'string') el.setAttribute('data-palette', s.palette);
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

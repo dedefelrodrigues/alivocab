@@ -26,3 +26,6 @@ tts-cache/
 # playwright
 test-results/
 playwright-report/
+
+# generated
+apps/web/src/styles/palettes.generated.css

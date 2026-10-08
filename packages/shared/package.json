@@ -1,0 +1,23 @@
+{
+  "name": "@alivocab/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./appearance": "./src/appearance/index.ts"
+  },
+  "scripts": {
+    "gen:palettes-css": "tsx scripts/gen-palettes-css.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.3"
+  }
+}

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    // "node" is needed because the RPC client type-checks the API's source (AppType).
+    "types": ["vite/client", "node"],
     "paths": {
       "@/*": ["./src/*"]
     }

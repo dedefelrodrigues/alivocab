@@ -52,3 +52,14 @@ export function deltaE(a: string, b: string): number {
   const [l2, a2, b2] = toOklab(parseOklch(b));
   return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
 }
+
+/** Converts `oklch(L C H)` to a `#rrggbb` sRGB hex (gamut-clamped), e.g. for `<meta theme-color>`. */
+export function oklchToHex(value: string): string {
+  const encode = (x: number) => {
+    const v = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+    return Math.round(Math.min(1, Math.max(0, v)) * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${toLinearSrgb(parseOklch(value)).map(encode).join('')}`;
+}

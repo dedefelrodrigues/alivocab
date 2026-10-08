@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./appearance": "./src/appearance/index.ts"
+    "./appearance": "./src/appearance/index.ts",
+    "./enums": "./src/enums.ts"
   },
   "scripts": {
     "gen:palettes-css": "tsx scripts/gen-palettes-css.ts",

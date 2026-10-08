@@ -55,7 +55,7 @@ Rules for dependencies between packages:
 - In-browser AI (WebLLM, Chrome AI) lives in `apps/web`. Its output goes through the **same import
   endpoint** as pasted text, so all AI output is validated in one place.
 
-## Commands (once scaffolded)
+## Commands
 
 ```bash
 pnpm install
@@ -64,13 +64,14 @@ pnpm build
 pnpm test             # vitest across packages
 pnpm lint             # biome check
 pnpm format           # biome format --write
-pnpm db:generate      # drizzle-kit generate (after editing schema)
-pnpm db:migrate       # apply migrations to ./data/alivocab.db
-pnpm db:seed          # dev seed: admin user + invite code + sample theme
+pnpm db:generate      # drizzle-kit generate (after editing packages/db/src/schema)
+pnpm db:seed          # first admin from ADMIN_EMAIL/ADMIN_PASSWORD + prints a fresh invite code
+pnpm db:studio        # browse the SQLite DB (drizzle-kit studio)
 pnpm --filter @alivocab/api <script>   # run a script in one package
 ```
 
-Package names use the `@alivocab/*` scope.
+Package names use the `@alivocab/*` scope. The API applies pending migrations on boot. The dev DB
+lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fill in the secrets first.
 
 ## Domain concepts (keep these consistent)
 
@@ -95,6 +96,19 @@ Package names use the `@alivocab/*` scope.
   Both are stored in `user_profiles` (synced across devices). See PLAN.md §7.
 - **Generation**: every AI call or paste import is stored (`ai_generations`: prompt, raw output,
   provider, model, status) so it can be audited and re-parsed.
+
+## Auth & API patterns
+
+- `apps/api/src/app.ts` exports `createApp(deps)`. Tests build it with `createTestApp()`
+  (`src/test/helpers.ts`: in-memory DB, mocked fetch). Never import `env.ts` from code under test.
+- Protected routes use `requireAuth(auth)` (and `requireAdmin`) from `src/middleware/auth.ts`, then
+  `c.get('user')`. Lookups of user-owned rows filter on both id **and** `user_id`, and return 404
+  (not 403) for other users' ids.
+- Sign-up requires the `x-invite-code` header (`INVITE_HEADER`). Roles, banning and admin password
+  resets use Better Auth's admin plugin (`authClient.admin.*` on the web).
+- The web app calls the API via `api` (Hono RPC) + `unwrap()` (`src/lib/api.ts`). Query options
+  live in `src/lib/queries.ts`. Profile changes go through `useUpdateProfile()` (optimistic, and
+  also applies appearance).
 
 ## Conventions
 

@@ -53,3 +53,15 @@ describe('generatePalettesCss', () => {
     expect(css).toContain('--color-status-known: var(--status-known);');
   });
 });
+
+describe('oklchToHex', () => {
+  it('converts well-known colors', async () => {
+    const { oklchToHex } = await import('./color.ts');
+    expect(oklchToHex('oklch(1 0 0)')).toBe('#ffffff');
+    expect(oklchToHex('oklch(0 0 0)')).toBe('#000000');
+    // sRGB primaries expressed in OKLCH
+    expect(oklchToHex('oklch(0.62796 0.25768 29.234)')).toBe('#ff0000');
+    expect(oklchToHex('oklch(0.51975 0.17686 142.495)')).toBe('#008000');
+    expect(oklchToHex('oklch(0.45201 0.31321 264.052)')).toBe('#0000ff');
+  });
+});

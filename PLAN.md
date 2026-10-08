@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phase 0 done** (scaffolding). Next: Phase 1. Each phase ends in a usable, committed state.
+Status: **Phase 1 done** (DB, auth, settings). Next: Phase 2. Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -27,6 +27,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D16 | Color palettes | **Curated presets only** (no free color picker): language/flag-inspired palettes + neutrals. Every preset ships a light and a dark variant that are contrast-tested (WCAG AA) |
 | D17 | Palette selection | Default `auto` = follow the user's target language (learning Polish → Polish palette, fallback neutral). The user can pin a specific preset instead |
 | D18 | Light/dark | `system` (default) / `light` / `dark`. Palette and mode are **both saved to the account** and follow the user across devices |
+| D19 | Roles & user admin | Better Auth **admin plugin**: `user.role` (`user`/`admin`), ban/unban, admin-set password, role changes. No custom role column |
+| D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -62,11 +64,12 @@ The core loop (MVP) is done at the end of **Phase 3**.
 
 ## 3. Data model (Drizzle / SQLite)
 
-Auth tables (`user`, `session`, `account`, `verification`) are created by Better Auth. App tables:
+Auth tables (`user`, `session`, `account`, `verification`) follow Better Auth's schema; `user` also
+carries the admin plugin's `role`, `banned`, `ban_reason`, `ban_expires`. App tables:
 
 ```
 invite_codes        id, code (unique), created_by, max_uses, uses, expires_at, created_at
-user_profiles       user_id PK, role (admin|user), target_lang, native_lang,
+user_profiles       user_id PK, target_lang, native_lang,
                     default_word_count (30), default_ai_source, tts_provider, tts_voice,
                     daily_new_limit (20), daily_review_limit (200),
                     color_palette ('auto' | preset id, default 'auto'),
@@ -283,8 +286,8 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
   The change applies **instantly** (optimistic update), then saves.
 - To avoid a flash of the wrong colors on load, the last resolved palette and mode are cached in
   `localStorage` and applied by a tiny inline script in `index.html` before React mounts. The
-  account value overwrites it once `/api/me` loads. Logged-out pages (login/register) use
-  `system` mode + `slate`.
+  account value overwrites it once `/api/me` loads. Logged-out pages (login/register) use the
+  cached appearance, or `system` + `slate` when there is none.
 - Also update the PWA `theme-color` meta tag (light and dark values) to the active palette's
   primary or background, so the phone's status bar matches.
 
@@ -304,16 +307,24 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 ## 8. Auth & security
 - Better Auth email/password with scrypt hashing (the library default), HTTP-only `SameSite=Lax`
   secure cookies, and session rotation.
-- **Invite gate**: a sign-up hook requires a valid `invite_code` and increments `uses` in a
-  transaction. The first user is bootstrapped as admin via `pnpm db:seed` / `ADMIN_EMAIL` env.
-- Admin page: create/revoke invite codes, list users, disable a user.
+- **Invite gate**: `POST /api/auth/sign-up/email` must carry the code in an `x-invite-code` header.
+  A `user.create.before` hook consumes it atomically (`UPDATE … WHERE uses < max_uses AND not
+  expired/revoked RETURNING`). Taken emails are rejected before the hook, so they don't use up
+  invites. Admin-created users (`/admin/create-user`) are exempt. The first admin is bootstrapped by
+  `pnpm db:seed` from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+- Admin page: create/revoke invite codes (with a shareable `/register?invite=` link), list users,
+  enable/disable, make/remove admin, set a new password for a locked-out user.
+- **SSRF guard** for user-supplied AI base URLs: http(s) only, no redirects, and private/loopback
+  targets are rejected unless `ALLOW_PRIVATE_AI_BASE_URLS` (default: on in dev, off in prod).
+- API keys are encrypted with AES-256-GCM and bound to the owner's user id (AAD), so a ciphertext
+  copied to another row can't be decrypted.
 - Rate limiting: auth endpoints (Better Auth built-in) and AI/import endpoints (per user).
 - Every user-scoped query filters by `user_id` (helper `scoped(db, userId)`), with tests that check
   isolation between two users.
 - `APP_ENCRYPTION_KEY` (32-byte base64) for API keys and `BETTER_AUTH_SECRET`. Both are required at
   boot, and the app refuses to start without them.
 - Secure headers via Hono (`secureHeaders`), with a CSP that allows the WebLLM model CDN only when it is enabled.
-- Password reset: admin-triggered reset link at first. Email (SMTP) is optional later.
+- Password reset: admin sets a new password (above) for now. Self-service reset by email (SMTP) is optional later.
 
 ---
 
@@ -333,17 +344,18 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 **Done when** `pnpm dev` shows the web app calling `/api/health`, and CI is green.
 
 ### Phase 1: Database, auth, settings
-- [ ] Drizzle schema (§3), first migration, `db:seed` (admin + invite + sample theme)
-- [ ] Better Auth + invite gate; login / register (with invite) / logout pages; route guards
-- [ ] Settings page: languages, default word count, daily limits, TTS voice picker (lists `speechSynthesis` voices for the target lang)
-- [ ] Settings → Appearance: light/dark/system control, palette grid with live previews, "Auto: follow learning language", saved to account; remaining presets (`pt es de fr it uk en forest ocean`); PWA `theme-color` sync
-- [ ] AI credentials CRUD with encryption + "Test connection"
-- [ ] Admin page: invite codes
-- [ ] Tests: crypto round-trip, invite gate, user-isolation
+- [x] Drizzle schema (§3), first migration (applied on API boot), `db:seed` (admin + invite). The sample theme moved to Phase 2, when themes exist
+- [x] Better Auth + invite gate; login / register (with invite) / logout pages; route guards
+- [x] Settings page: languages, default word count, daily limits, TTS voice picker (lists `speechSynthesis` voices for the target lang)
+- [x] Settings → Appearance: light/dark/system control, palette grid with live previews, "Auto: follow learning language", saved to account; remaining presets (`pt es de fr it uk en forest ocean`); PWA `theme-color` sync
+- [x] AI credentials CRUD with encryption + "Test connection"
+- [x] Admin page: invite codes + user management (Better Auth admin plugin)
+- [x] Tests: crypto round-trip, invite gate, user-isolation
 
 **Done when** you can register with an invite, log in on phone and desktop, and save an encrypted API key.
 
 ### Phase 2: Themes, generation, import, tagging
+- [ ] Seed a sample theme for the dev admin
 - [ ] `core/prompts/vocabProposal` + snapshot tests
 - [ ] `core/import`: tolerant JSON/CSV parser + normalization + per-row validation report (heavily unit-tested with messy LLM outputs)
 - [ ] `packages/ai` provider registry (Anthropic, OpenAI, DeepSeek, Google, OpenRouter, OpenAI-compatible) + batching

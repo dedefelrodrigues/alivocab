@@ -37,6 +37,8 @@ export const TOKEN_NAMES = [
   'incorrect',
   'flashcard-front',
   'flashcard-back',
+  /** Modal backdrop; used with opacity (`bg-overlay/50`). */
+  'overlay',
 ] as const;
 
 export type TokenName = (typeof TOKEN_NAMES)[number];

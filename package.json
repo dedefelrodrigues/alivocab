@@ -12,7 +12,10 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "biome check . && node scripts/check-raw-colors.mjs",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "db:generate": "pnpm --filter @alivocab/db db:generate",
+    "db:studio": "pnpm --filter @alivocab/db db:studio",
+    "db:seed": "pnpm --filter @alivocab/api db:seed"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

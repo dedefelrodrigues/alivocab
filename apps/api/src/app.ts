@@ -1,16 +1,39 @@
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
+import { adminRoutes } from './routes/admin.ts';
+import { credentialRoutes } from './routes/credentials.ts';
 import { health } from './routes/health.ts';
+import { meRoutes } from './routes/me.ts';
+import type { AppDeps } from './types.ts';
 
 /**
- * The Hono app. Kept free of Node-only APIs so the web app can import its *type* for the
- * typed RPC client (`hc<AppType>`), and tests can call `app.request()` directly.
+ * Builds the Hono app from its dependencies (DB, auth, crypto), so tests can pass an
+ * in-memory database. The web app imports only the *type* (`AppType`) for its RPC client.
  */
-export const app = new Hono()
-  .basePath('/api')
-  .use(logger())
-  .use(secureHeaders())
-  .route('/health', health);
+export function createApp(deps: AppDeps) {
+  const app = new Hono().basePath('/api');
 
-export type AppType = typeof app;
+  if (deps.log !== false) app.use(logger());
+  app.use(secureHeaders());
+
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+      return c.json({ error: err.message }, err.status);
+    }
+    console.error(err);
+    return c.json({ error: 'Internal server error' }, 500);
+  });
+  app.notFound((c) => c.json({ error: 'Not found' }, 404));
+
+  app.on(['GET', 'POST'], '/auth/*', (c) => deps.auth.handler(c.req.raw));
+
+  return app
+    .route('/health', health)
+    .route('/me', meRoutes(deps))
+    .route('/credentials', credentialRoutes(deps))
+    .route('/admin', adminRoutes(deps));
+}
+
+export type AppType = ReturnType<typeof createApp>;

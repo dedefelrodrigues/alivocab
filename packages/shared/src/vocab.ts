@@ -215,6 +215,8 @@ export type PictureSearchResult = {
 
 export const pictureSearchSchema = z.object({
   q: z.string().trim().min(1).max(100),
+  /** Ask one provider only (the picker shows each provider's results as they arrive). */
+  provider: z.enum(SEARCH_PROVIDERS).optional(),
 });
 
 export const pictureChoiceSchema = z.object({

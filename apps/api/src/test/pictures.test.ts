@@ -1,8 +1,13 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { schema } from '@alivocab/db';
 import type { PictureDto, ReviewQueueDto, ThemeDetailDto, ThemeSummaryDto } from '@alivocab/shared';
 import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
+import { createPictureService } from '../lib/pictures/service.ts';
+import { createPictureStore } from '../lib/pictures/store.ts';
 import { createTestApp } from './helpers.ts';
 
 const png = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#e0a040' } })
@@ -12,7 +17,13 @@ const png = await sharp({ create: { width: 800, height: 600, channels: 3, backgr
 /** Public IP literals avoid DNS lookups while still passing the SSRF guard. */
 const IMG = (name: string) => `https://93.184.215.14/${name}.png`;
 
-type Route = { calls: string[]; fetchFn: typeof fetch };
+type Route = {
+  calls: string[];
+  fetchFn: typeof fetch;
+  userAgents?: string[];
+  /** Most Wikimedia requests that were in flight at the same time. */
+  maxCommonsInFlight?: () => number;
+};
 
 /**
  * Fake Openverse + Wikimedia Commons + image host. `results` maps a query to the Openverse ids
@@ -26,9 +37,17 @@ function fakeWeb(
     commons?: Record<string, number[]>;
     /** Openverse searches time out this many times before answering. */
     openverseTimeouts?: number;
+    /** Commons answers 429 this many times, with this Retry-After (seconds). */
+    commonsLimited?: { times: number; retryAfter: string };
+    /** Commons answers after this delay, to observe concurrency. */
+    commonsDelayMs?: number;
   } = {},
 ): Route {
   let timeouts = opts.openverseTimeouts ?? 0;
+  let commonsLimits = opts.commonsLimited?.times ?? 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const userAgents: string[] = [];
   const page = (pageid: number) => ({
     pageid,
     title: `File:Commons photo ${pageid}.jpg`,
@@ -66,10 +85,25 @@ function fakeWeb(
     width: 800,
     height: 600,
   });
-  const fetchFn = vi.fn<typeof fetch>(async (input) => {
+  const fetchFn = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
+    userAgents.push(new Headers(init?.headers).get('user-agent') ?? '');
     if (url.startsWith('https://commons.wikimedia.org/w/api.php?')) {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      try {
+        if (opts.commonsDelayMs) await new Promise((r) => setTimeout(r, opts.commonsDelayMs));
+      } finally {
+        inFlight--;
+      }
+      if (commonsLimits > 0) {
+        commonsLimits--;
+        return new Response('too many', {
+          status: 429,
+          headers: { 'retry-after': opts.commonsLimited?.retryAfter ?? '1' },
+        });
+      }
       const params = new URL(url).searchParams;
       const ids = params.has('pageids')
         ? [Number(params.get('pageids'))]
@@ -94,7 +128,7 @@ function fakeWeb(
     }
     return new Response('not found', { status: 404 });
   });
-  return { calls, fetchFn };
+  return { calls, fetchFn, userAgents, maxCommonsInFlight: () => maxInFlight };
 }
 
 const word = (lemma: string, extra: Record<string, unknown> = {}) => ({
@@ -365,6 +399,106 @@ describe('Wikimedia Commons', () => {
     const res = await call('/api/pictures/search?q=bread', { cookie });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { results: unknown[] }).results).toHaveLength(1);
+  });
+});
+
+describe('rate limits and pacing', () => {
+  it('waits out a short Retry-After from Wikimedia and retries once', async () => {
+    const web = fakeWeb(
+      {},
+      { commons: { bread: [5] }, commonsLimited: { times: 1, retryAfter: '0' } },
+    );
+    const { detail, call, cookie } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect((await detail()).words[0]?.image?.provider).toBe('wikimedia');
+    // Not blocked afterwards: the picker can still ask Wikimedia.
+    const res = await call('/api/pictures/search?q=bread&provider=wikimedia', { cookie });
+    expect(res.status).toBe(200);
+  });
+
+  it('skips a provider for as long as a long Retry-After says, with a clear message', async () => {
+    const web = fakeWeb(
+      { bread: ['ov-1'] },
+      { commons: { bread: [5] }, commonsLimited: { times: 1, retryAfter: '120' } },
+    );
+    const { detail, call, cookie } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect((await detail()).words[0]?.image?.provider).toBe('openverse');
+    const res = await call('/api/pictures/search?q=bread&provider=wikimedia', { cookie });
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toMatch(
+      /Wikimedia Commons has reached its limit. Try again in 2 min/,
+    );
+  });
+
+  it('sends Wikimedia requests one at a time', async () => {
+    const web = fakeWeb({}, { commons: { bread: [1], roll: [2], cake: [3] }, commonsDelayMs: 20 });
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    await Promise.all(
+      ['bread', 'roll', 'cake'].map((q) =>
+        ctx.call(`/api/pictures/search?q=${q}&provider=wikimedia`, { cookie: ctx.cookie }),
+      ),
+    );
+    expect(web.maxCommonsInFlight?.()).toBe(1);
+  });
+
+  it('identifies the app, with the configured contact, to providers', async () => {
+    const web = fakeWeb({}, { commons: { bread: [1] } });
+    const ctx = createTestApp({ fetchFn: web.fetchFn });
+    const pictures = createPictureService({
+      db: ctx.db,
+      store: createPictureStore(mkdtempSync(join(tmpdir(), 'alivocab-media-'))),
+      fetchFn: web.fetchFn,
+      contact: 'https://vocab.example.org',
+      wikimediaGapMs: 0,
+    });
+    await pictures.search('bread', 'wikimedia');
+    expect(web.userAgents?.[0]).toBe(
+      'AliVocab/0.1 (self-hosted vocabulary trainer; https://vocab.example.org)',
+    );
+  });
+});
+
+describe('picker per provider', () => {
+  it('lists the providers and searches one at a time', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] }, { commons: { bread: [7] } });
+    const { call, cookie } = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    expect(await json(call('/api/pictures/providers', { cookie }))).toEqual({
+      providers: ['wikimedia', 'openverse'],
+    });
+    const only = await json<{ results: Array<{ provider: string }> }>(
+      call('/api/pictures/search?q=bread&provider=openverse', { cookie }),
+    );
+    expect(only.results.map((r) => r.provider)).toEqual(['openverse']);
+    const pexels = await call('/api/pictures/search?q=bread&provider=pexels', { cookie });
+    expect(pexels.status).toBe(400);
+  });
+
+  it('reports a slow provider as a timeout', async () => {
+    const web = fakeWeb({}, { openverseTimeouts: 1 });
+    const { call, cookie } = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const res = await call('/api/pictures/search?q=bread&provider=openverse', { cookie });
+    expect(res.status).toBe(502);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      'Openverse took too long to answer',
+    );
+  });
+});
+
+describe('automatic pictures: phrases', () => {
+  it('falls back to the translation when the AI phrase finds nothing', async () => {
+    const web = fakeWeb({}, { commons: { 'chleb-en': [9] } });
+    const { detail } = await setupWith(web, [
+      word('chleb', { imageQuery: 'freshly baked crusty loaf on a wooden board' }),
+    ]);
+    expect((await detail()).words[0]?.image?.title).toBe('Commons photo 9');
+    const commonsQueries = web.calls
+      .filter((u) => u.includes('commons.wikimedia.org'))
+      .map((u) => new URL(u).searchParams.get('gsrsearch'));
+    expect(commonsQueries).toEqual([
+      'freshly baked crusty loaf on a wooden board filetype:bitmap',
+      'chleb-en filetype:bitmap',
+    ]);
+    // Openverse is not needed once Commons found something.
+    expect(web.calls.some((u) => u.includes('openverse'))).toBe(false);
   });
 });
 

@@ -34,6 +34,7 @@ export function createDepsFromEnv(): AppDeps {
       db,
       store: createPictureStore(mediaDir),
       pexelsKey: env.PEXELS_API_KEY,
+      contact: env.PICTURES_CONTACT,
       log: (msg) => console.warn(`[pictures] ${msg}`),
     }),
     allowPrivateAiBaseUrls,

@@ -15,12 +15,23 @@ export type ProviderHit = PictureSearchResult & {
 };
 
 export class ProviderLimitError extends Error {
-  constructor(readonly provider: string) {
+  constructor(
+    readonly provider: string,
+    /** From the Retry-After header, when the provider sent one. */
+    readonly retryAfterMs: number | null = null,
+  ) {
     super(`${provider} picture search limit reached; try again later`);
   }
 }
 
-const USER_AGENT = 'AliVocab/0.1 (self-hosted vocabulary trainer)';
+/** Retry-After as milliseconds (seconds or an HTTP date), or null. */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(value);
+  return Number.isNaN(at) ? null : Math.max(0, at - now);
+}
 
 export type SearchOptions = { size?: number; timeoutMs?: number };
 
@@ -36,10 +47,12 @@ async function getJson(
   }: { headers?: Record<string, string>; timeoutMs?: number } = {},
 ) {
   const res = await fetchFn(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...headers },
+    headers: { Accept: 'application/json', ...headers },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (res.status === 429) throw new ProviderLimitError(provider);
+  if (res.status === 429) {
+    throw new ProviderLimitError(provider, parseRetryAfter(res.headers.get('retry-after')));
+  }
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`${provider} returned HTTP ${res.status}`);
   return (await res.json()) as unknown;

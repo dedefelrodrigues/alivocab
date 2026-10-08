@@ -1,7 +1,7 @@
-import type { PictureSearchResult } from '@alivocab/shared';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { PictureSearchResult, SearchProvider } from '@alivocab/shared';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { EyeOff, Loader2, Search, Upload } from 'lucide-react';
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,6 +16,18 @@ import { api, errorMessage, unwrap } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
+
+const PROVIDER_NAMES: Record<SearchProvider, string> = {
+  wikimedia: 'Wikimedia Commons',
+  openverse: 'Openverse',
+  pexels: 'Pexels',
+};
+
+const providersQuery = {
+  queryKey: ['pictures', 'providers'],
+  queryFn: () => unwrap(api.pictures.providers.$get()),
+  staleTime: Number.POSITIVE_INFINITY,
+};
 
 /** Search free photos (Wikimedia Commons, Openverse, Pexels), upload your own, or hide it. */
 export function PicturePickerDialog({
@@ -33,7 +45,8 @@ export function PicturePickerDialog({
 }) {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState(initialQuery);
-  const [results, setResults] = useState<PictureSearchResult[] | null>(null);
+  /** The phrase last searched for; searching starts right away with the suggested one. */
+  const [submitted, setSubmitted] = useState(initialQuery.trim());
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -44,10 +57,28 @@ export function PicturePickerDialog({
     onClose();
   };
 
-  const search = useMutation({
-    mutationFn: (q: string) => unwrap(api.pictures.search.$get({ query: { q } })),
-    onSuccess: (r) => setResults(r.results),
-    onError: (err) => toast.error(errorMessage(err)),
+  // One request per provider, so fast providers show their photos without waiting for slow ones.
+  const { data: providerList } = useQuery(providersQuery);
+  const providers = providerList?.providers ?? [];
+  const searches = useQueries({
+    queries: providers.map((provider) => ({
+      queryKey: ['pictures', 'search', provider, submitted],
+      queryFn: () =>
+        unwrap(api.pictures.search.$get({ query: { q: submitted, provider } })).then(
+          (r) => r.results,
+        ),
+      enabled: !!submitted,
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+  });
+  const searching = searches.some((s) => s.isFetching);
+  const results: PictureSearchResult[] = searches.flatMap((s) => s.data ?? []);
+  const finished = !!submitted && providers.length > 0 && !searching;
+  const slow = providers.filter((_, i) => searches[i]?.isFetching);
+  const failed = providers.flatMap((provider, i) => {
+    const error = searches[i]?.error;
+    return error ? [{ provider, message: errorMessage(error) }] : [];
   });
 
   const choose = useMutation({
@@ -92,19 +123,20 @@ export function PicturePickerDialog({
     onError: (err) => toast.error(errorMessage(err)),
   });
 
-  // Search right away with the suggested phrase.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on open
-  useEffect(() => {
-    if (initialQuery.trim()) search.mutate(initialQuery.trim());
-  }, []);
-
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (query.trim()) search.mutate(query.trim());
+    const q = query.trim();
+    if (!q) return;
+    if (q === submitted) {
+      // Same phrase again: retry only the providers that failed.
+      searches.forEach((s) => {
+        if (s.error) void s.refetch();
+      });
+    } else setSubmitted(q);
   };
 
   const busy = choose.isPending || upload.isPending;
-  const usesPexels = results?.some((r) => r.provider === 'pexels');
+  const usesPexels = results.some((r) => r.provider === 'pexels');
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -124,22 +156,32 @@ export function PicturePickerDialog({
             placeholder="e.g. loaf of bread"
             autoFocus
           />
-          <Button type="submit" disabled={search.isPending || !query.trim()}>
-            {search.isPending ? <Loader2 className="animate-spin" /> : <Search />} Search
+          <Button type="submit" disabled={!query.trim()}>
+            {searching ? <Loader2 className="animate-spin" /> : <Search />} Search
           </Button>
         </form>
 
-        {search.isPending && (
+        {slow.length > 0 && (
           <p role="status" className="text-sm text-muted-foreground motion-safe:animate-pulse">
-            Searching free photos… a new search can take about 10 seconds.
+            Searching {slow.map((p) => PROVIDER_NAMES[p]).join(' and ')}…
+            {slow.includes('openverse') && results.length > 0 && ' (Openverse can be slow)'}
           </p>
         )}
-        {results && results.length === 0 && (
+        {failed.length > 0 && (
+          <ul className="space-y-0.5 text-xs text-muted-foreground">
+            {failed.map((f) => (
+              <li key={f.provider}>
+                {PROVIDER_NAMES[f.provider]}: {f.message}
+              </li>
+            ))}
+          </ul>
+        )}
+        {finished && results.length === 0 && failed.length < providers.length && (
           <p className="text-sm text-muted-foreground">
-            No photos found. Try a simpler or English phrase.
+            No photos found. Try a shorter English phrase, like “orange” or “bread roll”.
           </p>
         )}
-        {results && results.length > 0 && (
+        {results.length > 0 && (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-label="Search results">
             {results
               .filter((hit) => !broken.has(`${hit.provider}-${hit.id}`))

@@ -1,7 +1,7 @@
 import { type CefrLevel, languageName, type ProposalFormat } from '@alivocab/shared';
 
 /** Bump when the template changes in a way that affects output (stored with each generation). */
-export const VOCAB_PROMPT_VERSION = 'vocab-proposal@3';
+export const VOCAB_PROMPT_VERSION = 'vocab-proposal@4';
 
 export type VocabPromptInput = {
   targetLang: string;
@@ -78,7 +78,7 @@ export function buildVocabPrompt(input: VocabPromptInput): string {
     '- "pronunciation": IPA without slashes.',
     `- "examples": one natural, level-appropriate ${target} sentence using the word, with its ${native} translation, and "cloze" = the word exactly as it appears in the sentence (inflected form).`,
     '- "notes": optional short tip (irregularity, false friend, register). Leave empty if nothing useful.',
-    '- "image_query": a short English phrase to find a photo that clearly shows the word (e.g. "loaf of bread", "woman running"). Use null if it can\'t be pictured (abstract or grammar words).',
+    '- "image_query": 1 to 3 English words naming what a photo of the word shows, as you would type into a photo search (e.g. "bread", "orange fruit", "running"). No scenes, adjectives or details. Use null if it can\'t be pictured (abstract or grammar words).',
   );
   if (input.avoid?.length) {
     lines.push(`- Do NOT include any of these (already known): ${input.avoid.join(', ')}.`);
@@ -107,7 +107,7 @@ export function buildVocabPrompt(input: VocabPromptInput): string {
               },
             ],
             notes: '',
-            image_query: '<English photo search phrase, or null>',
+            image_query: '<1-3 English words for a photo search, or null>',
           },
         ],
       }),

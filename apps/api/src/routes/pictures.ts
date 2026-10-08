@@ -12,10 +12,15 @@ export const pictureRoutes = ({ auth, pictures }: AppDeps) =>
     .use(requireAuth(auth))
     .get(
       '/search',
-      rateLimitPerUser({ max: 40, windowMs: 10 * 60_000 }),
+      // The picker sends one request per provider, so this allows about 40 searches.
+      rateLimitPerUser({ max: 120, windowMs: 10 * 60_000 }),
       validate('query', pictureSearchSchema),
-      async (c) => c.json({ results: await pictures.search(c.req.valid('query').q) }),
-    );
+      async (c) => {
+        const { q, provider } = c.req.valid('query');
+        return c.json({ results: await pictures.search(q, provider) });
+      },
+    )
+    .get('/providers', (c) => c.json({ providers: pictures.providers() }));
 
 export const mediaRoutes = ({ auth, pictures }: AppDeps) =>
   new Hono<AuthedEnv>().use(requireAuth(auth)).get('/:name', async (c) => {

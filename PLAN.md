@@ -191,12 +191,17 @@ the reason, and the valid rows still import.
 - **Sources**, best first: Pexels when `PEXELS_API_KEY` is set, Wikimedia Commons (no key, about
   1 s, bitmap files only, the 500 px thumbnail is downloaded), then Openverse (no key, but often
   10–25 s for a new query and limited to about 20/min and 200/day per server). Auto-pick asks them
-  in that order and stops at the first usable hit. The picker asks all of them in parallel, waits at
-  most 10 s for each and shows whatever came back. Uploads (any image sharp can read,
+  in that order and stops at the first usable hit. The picker sends one request per provider
+  (`/api/pictures/providers`, `?provider=`) and shows each provider's photos as they arrive.
+- **Politeness**: Wikimedia refuses parallel bursts (429 with `Retry-After` of a few seconds), so its
+  calls run one at a time. A short `Retry-After` (≤ 10 s) is waited out and retried once; otherwise
+  the provider is skipped for as long as it asks (5 min without a header). Every request carries a
+  `User-Agent`, with the optional `PICTURES_CONTACT` that Wikimedia asks API clients for. Uploads (any image sharp can read,
   ≤ 8 MB) are private to the uploader and never become the shared default.
-- **Search phrase**: the vocab prompt (`vocab-proposal@3`) asks for an English `image_query`
-  per word, or `none` for words that can't be pictured (adjectives like *dojrzały*, abstract verbs).
-  Pasted lists without the column fall back to the first translation, for nouns only.
+- **Search phrase**: the vocab prompt (`vocab-proposal@4`) asks for 1–3 English words per word
+  (`image_query`, "orange fruit", not a scene description: long phrases match nothing), or `none`
+  for words that can't be pictured (adjectives like *dojrzały*, abstract verbs). For nouns the
+  English (or first) translation is tried as well, and pasted lists without the column use only it.
 - **Auto-pick**: `saveWords()` returns the lexeme ids, and the theme routes queue them
   (`pictures.enqueue`) when `user_profiles.auto_pictures` is on. A small background queue in the API
   process searches, downloads the top hit and stores it. A word is marked `image_searched_at` only

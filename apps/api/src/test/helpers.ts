@@ -25,6 +25,7 @@ export function createTestApp(overrides: Partial<AppDeps> = {}) {
       store: createPictureStore(mkdtempSync(join(tmpdir(), 'alivocab-media-'))),
       fetchFn,
       openverseIntervalMs: 0,
+      wikimediaGapMs: 0,
     }),
     db,
     auth: createAuth({

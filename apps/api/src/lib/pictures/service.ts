@@ -34,26 +34,57 @@ export function toPictureDto(row: ImageRow): PictureDto {
 const PICTURABLE_BY_DEFAULT = new Set(['noun']);
 
 /**
- * How long the picker waits for each provider. Openverse is often slower than this for a new
- * query; the picker then shows what the faster providers found. Auto-pick runs in the
- * background and waits longer.
+ * How long a picker search waits. The picker asks each provider separately and shows results as
+ * they arrive, so a slow provider only delays its own results. A combined search (all providers
+ * in one request) waits less, so the fast ones aren't held up for long.
  */
-const PICKER_TIMEOUT_MS = 10_000;
+const PICKER_TIMEOUT_MS = 20_000;
+const COMBINED_TIMEOUT_MS = 10_000;
 
 export type PictureServiceOptions = {
   db: Db;
   store: PictureStore;
   fetchFn?: typeof fetch;
   pexelsKey?: string;
+  /**
+   * Contact for the User-Agent (a URL or email). Wikimedia asks API clients to identify
+   * themselves this way and is stricter with anonymous ones.
+   */
+  contact?: string;
   /** Minimum spacing between Openverse calls (anonymous burst limit is 20/min). */
   openverseIntervalMs?: number;
+  /** Gap between Wikimedia calls, which are sent one at a time (it refuses parallel bursts). */
+  wikimediaGapMs?: number;
+  /** Longest Retry-After we wait out before retrying once; longer ones skip the provider. */
+  maxRetryWaitMs?: number;
   log?: (msg: string) => void;
 };
 
+/** How long a provider is skipped after a limit error that gave no Retry-After. */
+const DEFAULT_BLOCK_MS = 5 * 60_000;
+const MAX_BLOCK_MS = 60 * 60_000;
+
+const PROVIDER_NAMES: Record<SearchProvider, string> = {
+  wikimedia: 'Wikimedia Commons',
+  openverse: 'Openverse',
+  pexels: 'Pexels',
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function createPictureService(opts: PictureServiceOptions) {
   const { db, store } = opts;
-  const fetchFn = opts.fetchFn ?? fetch;
+  const baseFetch = opts.fetchFn ?? fetch;
+  const userAgent = `AliVocab/0.1 (self-hosted vocabulary trainer${opts.contact ? `; ${opts.contact}` : ''})`;
+  /** Every provider and image request identifies the app. */
+  const fetchFn: typeof fetch = (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set('User-Agent', userAgent);
+    return baseFetch(input, { ...init, headers });
+  };
   const interval = opts.openverseIntervalMs ?? 3_100;
+  const wikimediaGap = opts.wikimediaGapMs ?? 150;
+  const maxRetryWait = opts.maxRetryWaitMs ?? 10_000;
   const log = opts.log ?? (() => {});
 
   // ── Provider access with politeness and back-off ─────────────────────────
@@ -62,18 +93,53 @@ export function createPictureService(opts: PictureServiceOptions) {
 
   const usable = (name: string) => (blockedUntil.get(name) ?? 0) <= Date.now();
 
-  async function callProvider<T>(name: SearchProvider, fn: () => Promise<T>): Promise<T> {
+  /** Wikimedia calls run one after another; this is the tail of that line. */
+  let wikimediaLane: Promise<unknown> = Promise.resolve();
+
+  function paced<T>(name: SearchProvider, fn: () => Promise<T>): Promise<T> {
+    if (name === 'wikimedia') {
+      const run = wikimediaLane.then(fn);
+      wikimediaLane = run.then(
+        () => sleep(wikimediaGap),
+        () => sleep(wikimediaGap),
+      );
+      return run;
+    }
     if (name === 'openverse') {
       const wait = nextOpenverseAt - Date.now();
       nextOpenverseAt = Math.max(Date.now(), nextOpenverseAt) + interval;
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      if (wait > 0) return sleep(wait).then(fn);
     }
+    return fn();
+  }
+
+  /**
+   * Calls a provider politely. A short Retry-After (Wikimedia sends a few seconds for bursts) is
+   * waited out and retried once; otherwise the provider is skipped for a while.
+   */
+  async function callProvider<T>(name: SearchProvider, fn: () => Promise<T>): Promise<T> {
     try {
-      return await fn();
+      return await paced(name, fn);
     } catch (err) {
-      if (err instanceof ProviderLimitError) blockedUntil.set(name, Date.now() + 60 * 60_000);
+      if (!(err instanceof ProviderLimitError)) throw err;
+      if (err.retryAfterMs !== null && err.retryAfterMs <= maxRetryWait) {
+        await sleep(err.retryAfterMs);
+        try {
+          return await paced(name, fn);
+        } catch (again) {
+          if (again instanceof ProviderLimitError) block(name, again.retryAfterMs);
+          throw again;
+        }
+      }
+      block(name, err.retryAfterMs);
       throw err;
     }
+  }
+
+  function block(name: SearchProvider, retryAfterMs: number | null) {
+    const ms = Math.min(MAX_BLOCK_MS, Math.max(retryAfterMs ?? DEFAULT_BLOCK_MS, 1_000));
+    blockedUntil.set(name, Date.now() + ms);
+    log(`${name} is rate-limited; skipping it for ${Math.round(ms / 1000)} s`);
   }
 
   /** Configured providers, best first: Pexels (with a key), Wikimedia (fast), Openverse (slow). */
@@ -119,26 +185,55 @@ export function createPictureService(opts: PictureServiceOptions) {
     return hits;
   }
 
-  /** Picker search: all available providers in parallel, results in provider order. */
-  async function search(q: string): Promise<PictureSearchResult[]> {
-    const order = providerOrder();
-    if (!order.length) {
-      throw new HTTPException(503, {
-        message: 'Picture search limit reached. Try again in an hour.',
-      });
+  const toResult = ({
+    downloadUrl: _d,
+    creatorUrl: _c,
+    licenseUrl: _l,
+    sourceUrl: _s,
+    ...hit
+  }: ProviderHit): PictureSearchResult => hit;
+
+  function limitedMessage(name?: SearchProvider) {
+    const until = Math.max(...(name ? [name] : configured).map((n) => blockedUntil.get(n) ?? 0));
+    const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60_000));
+    return `${name ? `${PROVIDER_NAMES[name]} has` : 'Picture search has'} reached its limit. Try again in ${minutes} min.`;
+  }
+
+  /**
+   * Picker search. With `only`, asks that one provider (the picker does this per provider to show
+   * results as they arrive); otherwise all available providers in parallel.
+   */
+  async function search(q: string, only?: SearchProvider): Promise<PictureSearchResult[]> {
+    if (only) {
+      if (!configured.includes(only)) {
+        throw new HTTPException(400, { message: `${PROVIDER_NAMES[only]} is not configured` });
+      }
+      if (!usable(only)) throw new HTTPException(503, { message: limitedMessage(only) });
+      try {
+        return (await searchProvider(only, q, PICKER_TIMEOUT_MS)).map(toResult);
+      } catch (err) {
+        log(`picture search via ${only} failed: ${(err as Error).message}`);
+        if (err instanceof ProviderLimitError) {
+          throw new HTTPException(503, { message: limitedMessage(only) });
+        }
+        const timedOut = (err as Error).name === 'TimeoutError';
+        throw new HTTPException(502, {
+          message: timedOut
+            ? `${PROVIDER_NAMES[only]} took too long to answer`
+            : (err as Error).message,
+        });
+      }
     }
+    const order = providerOrder();
+    if (!order.length) throw new HTTPException(503, { message: limitedMessage() });
     const settled = await Promise.allSettled(
-      order.map((name) => searchProvider(name, q, PICKER_TIMEOUT_MS)),
+      order.map((name) => searchProvider(name, q, COMBINED_TIMEOUT_MS)),
     );
     const results: PictureSearchResult[] = [];
     let lastError: unknown = null;
     settled.forEach((outcome, i) => {
       if (outcome.status === 'fulfilled') {
-        results.push(
-          ...outcome.value.map(
-            ({ downloadUrl: _d, creatorUrl: _c, licenseUrl: _l, sourceUrl: _s, ...hit }) => hit,
-          ),
-        );
+        results.push(...outcome.value.map(toResult));
       } else {
         lastError = outcome.reason;
         log(`picture search via ${order[i]} failed: ${(outcome.reason as Error).message}`);
@@ -297,59 +392,66 @@ export function createPictureService(opts: PictureServiceOptions) {
   const retried = new Set<string>();
   let running: Promise<void> | null = null;
 
-  /** Search phrase for a word: the AI's phrase, else an English (or any) translation for nouns. */
-  function queryFor(lexeme: typeof lexemes.$inferSelect): string | null {
-    if (lexeme.imageQuery !== null) return lexeme.imageQuery || null;
-    if (!PICTURABLE_BY_DEFAULT.has(lexeme.pos)) return null;
-    const translations = db
-      .select({ lang: lexemeTranslations.lang, text: lexemeTranslations.text })
-      .from(lexemeTranslations)
-      .where(eq(lexemeTranslations.lexemeId, lexeme.id))
-      .orderBy(asc(lexemeTranslations.sort))
-      .all();
-    return (translations.find((t) => t.lang === 'en') ?? translations[0])?.text ?? null;
+  /**
+   * Search phrases for a word, best first: the AI's phrase, then (for nouns) the English or first
+   * translation. An empty AI phrase means the word can't be pictured.
+   */
+  function queriesFor(lexeme: typeof lexemes.$inferSelect): string[] {
+    if (lexeme.imageQuery === '') return [];
+    const queries = lexeme.imageQuery ? [lexeme.imageQuery] : [];
+    if (PICTURABLE_BY_DEFAULT.has(lexeme.pos)) {
+      const translations = db
+        .select({ lang: lexemeTranslations.lang, text: lexemeTranslations.text })
+        .from(lexemeTranslations)
+        .where(eq(lexemeTranslations.lexemeId, lexeme.id))
+        .orderBy(asc(lexemeTranslations.sort))
+        .all();
+      const translation = (translations.find((t) => t.lang === 'en') ?? translations[0])?.text;
+      if (translation) queries.push(translation);
+    }
+    return [...new Set(queries.map((q) => q.trim().toLowerCase()).filter(Boolean))];
   }
+
+  const usableHit = (h: ProviderHit) =>
+    !h.width ||
+    (h.width >= 200 && h.height >= 200 && h.width / h.height < 2.5 && h.height / h.width < 2.5);
 
   /** Returns `'retry'` when a provider failed or was skipped, so the word was not fully searched. */
   async function autoPickOne(lexemeId: string): Promise<'retry' | undefined> {
     const lexeme = db.select().from(lexemes).where(eq(lexemes.id, lexemeId)).get();
     if (!lexeme || lexeme.imageId) return;
-    const query = queryFor(lexeme);
+    const queries = queriesFor(lexeme);
     const markSearched = () =>
       db.update(lexemes).set({ imageSearchedAt: new Date() }).where(eq(lexemes.id, lexemeId)).run();
-    if (!query) return void markSearched();
+    if (!queries.length) return void markSearched();
 
     // The word only counts as "searched" when every provider answered; timeouts, limits and
-    // outages leave it unsearched so it can be retried.
+    // outages leave it unsearched so it can be retried. Each provider tries every phrase before
+    // the next (slower) provider is asked.
     const order = providerOrder();
     let incomplete = order.length < configured.length;
     for (const name of order) {
-      let hits: ProviderHit[];
-      try {
-        hits = await searchProvider(name, query);
-      } catch (err) {
-        incomplete = true;
-        log(`auto picture for ${lexeme.lemma} via ${name} failed: ${(err as Error).message}`);
-        continue;
-      }
-      const hit = hits.find(
-        (h) =>
-          !h.width ||
-          (h.width >= 200 &&
-            h.height >= 200 &&
-            h.width / h.height < 2.5 &&
-            h.height / h.width < 2.5),
-      );
-      if (!hit) continue;
-      try {
-        const image = await storeHit(lexemeId, hit, null);
-        db.update(lexemes)
-          .set({ imageId: image.id, imageSearchedAt: new Date() })
-          .where(and(eq(lexemes.id, lexemeId), isNull(lexemes.imageId)))
-          .run();
-        return;
-      } catch (err) {
-        log(`storing picture for ${lexeme.lemma} failed: ${(err as Error).message}`);
+      for (const query of queries) {
+        let hits: ProviderHit[];
+        try {
+          hits = await searchProvider(name, query);
+        } catch (err) {
+          incomplete = true;
+          log(`auto picture for ${lexeme.lemma} via ${name} failed: ${(err as Error).message}`);
+          break;
+        }
+        const hit = hits.find(usableHit);
+        if (!hit) continue;
+        try {
+          const image = await storeHit(lexemeId, hit, null);
+          db.update(lexemes)
+            .set({ imageId: image.id, imageSearchedAt: new Date() })
+            .where(and(eq(lexemes.id, lexemeId), isNull(lexemes.imageId)))
+            .run();
+          return;
+        } catch (err) {
+          log(`storing picture for ${lexeme.lemma} failed: ${(err as Error).message}`);
+        }
       }
     }
     if (incomplete) return 'retry';
@@ -399,6 +501,8 @@ export function createPictureService(opts: PictureServiceOptions) {
 
   return {
     search,
+    /** Providers the picker can ask, best first. */
+    providers: () => [...configured],
     choose,
     upload,
     setHidden,

@@ -25,7 +25,7 @@ export async function downloadImage(url: string, fetchFn: typeof fetch = fetch):
     await assertPublicUrl(current, false);
     const res = await fetchFn(current, {
       redirect: 'manual',
-      headers: { 'User-Agent': 'AliVocab/0.1 (self-hosted vocabulary trainer)', Accept: 'image/*' },
+      headers: { Accept: 'image/*' },
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status >= 300 && res.status < 400) {

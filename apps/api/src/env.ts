@@ -23,6 +23,8 @@ const envSchema = z.object({
   ALLOW_PRIVATE_AI_BASE_URLS: z.stringbool().optional(),
   MEDIA_DIR: z.string().default('./data/media'),
   PEXELS_API_KEY: z.string().min(10).optional(),
+  /** URL or email sent in the User-Agent to picture providers (Wikimedia asks for one). */
+  PICTURES_CONTACT: z.string().min(3).max(200).optional(),
   ADMIN_EMAIL: z.email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
 });

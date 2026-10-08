@@ -16,6 +16,7 @@ Multi-user with login (invite-only sign-up), self-hosted later on a VPS with Doc
 |------------|--------|
 | Monorepo   | pnpm workspaces + Turborepo, Node 24 LTS, ESM everywhere, TypeScript `strict` |
 | Frontend   | React 19 + Vite, TanStack Router (file-based) + TanStack Query, Tailwind CSS v4 + shadcn/ui, `vite-plugin-pwa` (installable, mobile-first) |
+| Appearance | Semantic CSS-variable tokens (OKLCH), curated color palettes (language/flag-inspired + neutrals), each with light and dark variants; light/dark/system mode |
 | Backend    | Hono on Node (`@hono/node-server`), zod validation (`@hono/zod-validator`), Hono RPC client (`hc`) for end-to-end types |
 | Database   | SQLite (WAL mode) via `better-sqlite3` + Drizzle ORM, migrations with `drizzle-kit` |
 | Auth       | Better Auth (email + password, cookie sessions, Drizzle adapter) + custom invite-code gate |
@@ -82,6 +83,10 @@ Package names use the `@alivocab/*` scope.
 - **Tag → SRS seeding**: `unknown` creates new cards due now. `recognize` gives the recognition card
   a short seeded interval and makes the recall card due now. `known` seeds both cards with long
   intervals. After that, the status is **derived from performance** (with manual override allowed).
+- **Appearance / palette**: the user's color scheme. **Never call it "theme"** in code, routes or
+  UI copy, because *theme* means a vocabulary theme. `color_palette` is `'auto'` (follow
+  `target_lang`, fallback `slate`) or a preset id. `color_mode` is `system | light | dark`.
+  Both are stored in `user_profiles` (synced across devices). See PLAN.md §7.
 - **Generation**: every AI call or paste import is stored (`ai_generations`: prompt, raw output,
   provider, model, status) so it can be audited and re-parsed.
 
@@ -103,6 +108,11 @@ Package names use the `@alivocab/*` scope.
 - Secrets: provider API keys are AES-256-GCM encrypted with `APP_ENCRYPTION_KEY` and never sent back
   to the client (show only the provider and the last 4 characters). `.env` is gitignored.
   `.env.example` documents every variable.
+- Colors: components use **only semantic token utilities** (`bg-primary`, `text-muted-foreground`,
+  `text-status-known`, …). No raw Tailwind palette classes (`bg-red-500`) or hex/rgb values in
+  components, and CI checks for this. New presets go in
+  `packages/shared/src/appearance/palettes.ts` with both `light` and `dark` token sets and must pass
+  the contrast tests. Never show status or correctness by color alone. Pair it with an icon or label.
 - UI: mobile-first and touch-friendly. Keyboard shortcuts on desktop (1/2/3 for tagging,
   space to flip a flashcard). All UI strings in English for now, kept in one place so they can
   be translated later.

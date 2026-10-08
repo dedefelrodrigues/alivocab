@@ -24,6 +24,9 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D13 | Hosting | VPS / home server, Docker + Caddy, SQLite on a volume, Litestream / nightly backups |
 | D14 | Name | **AliVocab**, package scope `@alivocab/*` |
 | D15 | Exercise roadmap | Flashcards, MCQ, fill-in, listening, declension/conjugation drills, sentence building/translation, AI role-play |
+| D16 | Color palettes | **Curated presets only** (no free color picker): language/flag-inspired palettes + neutrals. Every preset ships a light and a dark variant that are contrast-tested (WCAG AA) |
+| D17 | Palette selection | Default `auto` = follow the user's target language (learning Polish → Polish palette, fallback neutral). The user can pin a specific preset instead |
+| D18 | Light/dark | `system` (default) / `light` / `dark`. Palette and mode are **both saved to the account** and follow the user across devices |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -65,7 +68,9 @@ Auth tables (`user`, `session`, `account`, `verification`) are created by Better
 invite_codes        id, code (unique), created_by, max_uses, uses, expires_at, created_at
 user_profiles       user_id PK, role (admin|user), target_lang, native_lang,
                     default_word_count (30), default_ai_source, tts_provider, tts_voice,
-                    daily_new_limit (20), daily_review_limit (200), created_at, updated_at
+                    daily_new_limit (20), daily_review_limit (200),
+                    color_palette ('auto' | preset id, default 'auto'),
+                    color_mode (system|light|dark, default 'system'), created_at, updated_at
 ai_credentials      id, user_id, provider (anthropic|openai|deepseek|google|openrouter|openai_compat),
                     label, base_url?, default_model, key_ciphertext, key_iv, key_tag, key_last4,
                     created_at, updated_at
@@ -228,7 +233,75 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 
 ---
 
-## 7. Auth & security
+## 7. Appearance: color palettes & light/dark mode
+
+> Naming: in code this is **"appearance" / "palette"**, never "theme", because *theme* already
+> means a vocabulary theme in this app.
+
+### 7.1 Design tokens
+- All UI colors are **semantic CSS variables** (shadcn/Tailwind v4 convention, OKLCH values):
+  `--background`, `--foreground`, `--card`, `--muted`, `--primary`, `--primary-foreground`,
+  `--accent`, `--ring`, `--border`, `--destructive`, plus app-specific tokens:
+  `--status-unknown`, `--status-recognize`, `--status-known`, `--correct`, `--incorrect`,
+  `--chart-1..5`, `--flashcard-front`, `--flashcard-back`.
+- Components **never** use raw colors (`bg-red-500`, hex values). Only token utilities
+  (`bg-primary`, `text-status-known`). Biome/grep check in CI to enforce it.
+- Light/dark mode is set with `class="dark"` on `<html>` and the palette with `data-palette="pl"`.
+  `system` mode follows `prefers-color-scheme` live, so it changes when the OS changes.
+
+### 7.2 Presets (`packages/shared/src/appearance/palettes.ts`)
+- Each preset is `{ id, label, languages: string[], light: Tokens, dark: Tokens }` in TypeScript.
+  A build step generates `palettes.css` with one `[data-palette=…]` block per mode.
+- Initial set (more can be added cheaply):
+
+  | id | Inspired by | Primary / accent idea |
+  |----|-------------|-----------------------|
+  | `pl` | Polish | crimson red / warm white |
+  | `pt` | Portuguese | deep green / red, gold accent |
+  | `es` | Spanish | red / saffron yellow |
+  | `de` | German | black-charcoal / red, gold accent |
+  | `fr` | French | blue / red |
+  | `it` | Italian | green / red |
+  | `uk` | Ukrainian | blue / yellow |
+  | `en` | English | navy / red |
+  | `slate` | neutral (fallback) | slate / indigo |
+  | `forest`, `ocean` | neutral | green / teal, blue / cyan |
+
+- Flag colors are *inspiration*: they get toned down so they work as UI colors (e.g. Polish red
+  is the primary and buttons, not a red background).
+- Status colors (`unknown`/`recognize`/`known`) and `correct`/`incorrect` stay recognizable in
+  every preset (e.g. on a red-primary palette, "incorrect" shifts hue or uses an icon + pattern).
+  Status is never shown by color alone: there is always an icon or label too.
+
+### 7.3 Resolution logic (`packages/shared/src/appearance/resolve.ts`, pure + unit-tested)
+- `resolvePalette(profile)`: if `color_palette !== 'auto'` use it, otherwise find the preset whose
+  `languages` include `target_lang`, falling back to `slate`.
+- `resolveMode(color_mode, prefersDark)` → `light | dark`.
+
+### 7.4 Persistence & first paint
+- Source of truth: `user_profiles.color_palette` / `color_mode`, edited on the Settings page.
+  The change applies **instantly** (optimistic update), then saves.
+- To avoid a flash of the wrong colors on load, the last resolved palette and mode are cached in
+  `localStorage` and applied by a tiny inline script in `index.html` before React mounts. The
+  account value overwrites it once `/api/me` loads. Logged-out pages (login/register) use
+  `system` mode + `slate`.
+- Also update the PWA `theme-color` meta tag (light and dark values) to the active palette's
+  primary or background, so the phone's status bar matches.
+
+### 7.5 Settings UI
+- An "Appearance" section with a light / dark / system segmented control and a palette grid of
+  swatch cards. Each card shows a live mini-preview (button, flashcard, status chips) in the
+  current mode. The first option is "Auto: follow learning language (currently 🇵🇱 Polish)".
+
+### 7.6 Tests
+- Vitest: every preset × mode passes WCAG AA (4.5:1 body text, 3:1 large text and UI parts) for
+  key foreground/background pairs, and status colors are distinguishable from each other.
+  Adding a bad preset fails CI.
+- Playwright (later): visual snapshots of the dashboard and a flashcard for `pl` light/dark.
+
+---
+
+## 8. Auth & security
 - Better Auth email/password with scrypt hashing (the library default), HTTP-only `SameSite=Lax`
   secure cookies, and session rotation.
 - **Invite gate**: a sign-up hook requires a valid `invite_code` and increments `uses` in a
@@ -244,7 +317,7 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 
 ---
 
-## 8. Phases & milestones
+## 9. Phases & milestones
 
 ### Phase 0: Repository & tooling
 - [x] `git init`, `.gitignore`
@@ -252,6 +325,7 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 - [ ] pnpm workspace + Turborepo; `apps/web`, `apps/api`, `packages/{db,core,shared,ai}`
 - [ ] Shared `tsconfig.base.json` (strict, ESM, `moduleResolution: bundler`), Biome, Vitest
 - [ ] Vite + React + Tailwind v4 + shadcn/ui init, TanStack Router; Vite dev proxy `/api → :3000`
+- [ ] Appearance foundation (§7): semantic token set, `palettes.ts` with `slate` + `pl` (light/dark), CSS generation, `<html>` class/`data-palette` switching, no-flash inline script, contrast test, CI check against raw color classes
 - [ ] Hono app with `/api/health`, typed RPC client wired into web
 - [ ] GitHub Actions CI: install → lint → typecheck → test → build
 - [ ] Create the GitHub repo with `gh repo create alivocab --private --source . --push` (when you're ready)
@@ -262,6 +336,7 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 - [ ] Drizzle schema (§3), first migration, `db:seed` (admin + invite + sample theme)
 - [ ] Better Auth + invite gate; login / register (with invite) / logout pages; route guards
 - [ ] Settings page: languages, default word count, daily limits, TTS voice picker (lists `speechSynthesis` voices for the target lang)
+- [ ] Settings → Appearance: light/dark/system control, palette grid with live previews, "Auto: follow learning language", saved to account; remaining presets (`pt es de fr it uk en forest ocean`); PWA `theme-color` sync
 - [ ] AI credentials CRUD with encryption + "Test connection"
 - [ ] Admin page: invite codes
 - [ ] Tests: crypto round-trip, invite gate, user-isolation
@@ -314,16 +389,17 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 
 ---
 
-## 9. Testing strategy
+## 10. Testing strategy
 - **Unit (Vitest)**: `core` (parsers with a corpus of real messy LLM outputs, normalization, SRS seeding and status, distractors, answer checking) and `ai` (provider mapping with mocked models).
 - **Integration**: Hono `app.request()` against an in-memory SQLite DB with migrations applied, covering auth, isolation, import and grading.
 - **E2E (Playwright, Phase 3+)**: register → create theme via paste → tag → review flashcards. Runs on desktop and mobile viewports.
 
-## 10. Risks & mitigations
+## 11. Risks & mitigations
 | Risk | Mitigation |
 |------|------------|
 | LLMs return malformed or inconsistent JSON/CSV | Structured output where supported, a tolerant parser, per-row validation, stored raw output with a re-parse/edit UI |
 | Small in-browser models produce poor Polish grammar (wrong gender/forms) | Label them "experimental" in the UI and let the user edit before saving. Suggest the copy-prompt flow for quality |
 | Web Speech has no pl-PL voice on some devices | Detect voices, warn, and offer cloud TTS |
 | Shared dictionary accumulates wrong data from one user's bad generation | Translations and examples carry the `source` and `generation_id`. Per-user edits are stored as user overrides if needed (revisit when multi-user is real) |
+| Flag-colored palettes become garish or unreadable, especially in dark mode | Curated presets only, toned-down flag hues, automated WCAG AA contrast tests per preset × mode, status never conveyed by color alone |
 | SQLite write contention | WAL mode, a single API process, short transactions. Fine for a small user base |

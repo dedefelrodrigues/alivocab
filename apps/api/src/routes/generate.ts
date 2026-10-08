@@ -113,6 +113,8 @@ export const generateRoutes = (deps: AppDeps) => {
               total: input.count,
               batchSize: BATCH_SIZE,
               avoid: ctx.avoid,
+              // Generic OpenAI-compatible servers may reject reasoning parameters.
+              disableReasoning: credential.provider !== 'openai_compat',
               prompt: (count, avoid) =>
                 buildVocabPrompt({ ...ctx, ...input, count, avoid, format: 'json' }),
               parse,

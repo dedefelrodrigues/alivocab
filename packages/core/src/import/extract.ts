@@ -21,6 +21,18 @@ type Ctx = { lang: string; nativeLang: string };
 
 const FENCE_RE = /```[ \t]*([\w-]*)[^\n]*\n([\s\S]*?)```/g;
 
+/**
+ * Joins the raw answers of several generation batches. The extractor splits on it again and
+ * reads each answer on its own, so one batch's formatting can't break another's.
+ */
+export const BATCH_SEPARATOR = '\n\n----- next batch -----\n\n';
+const BATCH_SPLIT_RE = /\n-{3,} next batch -{3,}\n/;
+
+/** Removes ``` fence lines (used when fences are nested or unbalanced). */
+function stripFences(text: string): string {
+  return text.replace(/^[ \t]*```.*$/gm, '');
+}
+
 function codeBlocks(text: string): string[] {
   return [...text.matchAll(FENCE_RE)].map((m) => m[2] ?? '').filter((b) => b.trim());
 }
@@ -193,6 +205,27 @@ function tryList(text: string): RawRecord[] | null {
 
 // ── Entry point ─────────────────────────────────────────────────────────────
 
+type SegmentResult = { format: SourceFormat; records: RawRecord[] } | null;
+
+function extractSegment(text: string, ctx: Ctx, issues: ImportIssue[]): SegmentResult {
+  const blocks = codeBlocks(text);
+  const json =
+    tryJson(blocks.length ? blocks : [text]) ??
+    // Nested or unbalanced fences (e.g. a ```json block inside another fence).
+    (blocks.length ? tryJson([stripFences(text)]) : null);
+  if (json) return { format: 'json', records: json.map((data, i) => ({ row: i + 1, data })) };
+
+  for (const body of blocks.length ? [blocks.join('\n'), stripFences(text)] : [text]) {
+    const table = tryMarkdownTable(body, ctx, issues);
+    if (table?.length) return { format: 'table', records: table };
+    const csv = tryCsv(body, ctx, issues);
+    if (csv?.length) return { format: 'csv', records: csv };
+    const list = tryList(body);
+    if (list) return { format: 'list', records: list };
+  }
+  return null;
+}
+
 export function extractRecords(raw: string, ctx: Ctx): Extracted {
   const issues: ImportIssue[] = [];
   const text = raw
@@ -200,33 +233,26 @@ export function extractRecords(raw: string, ctx: Ctx): Extracted {
     .replace(/^\uFEFF/, '')
     // Reasoning models (Qwen3, DeepSeek-R1…) may prepend their chain of thought.
     .replace(/<think>[\s\S]*?<\/think>/g, '');
-  const blocks = codeBlocks(text);
-  const candidates = blocks.length ? blocks : [text];
 
-  const json = tryJson(candidates);
-  if (json) {
-    return {
-      format: 'json',
-      records: json.map((data, i) => ({ row: i + 1, data })),
-      issues,
-    };
+  const records: RawRecord[] = [];
+  let format: SourceFormat | null = null;
+  for (const segment of text.split(BATCH_SPLIT_RE)) {
+    if (!segment.trim()) continue;
+    const found = extractSegment(segment, ctx, issues);
+    if (!found) continue;
+    format ??= found.format;
+    // Keep row numbers unique across batches.
+    const offset = records.length;
+    records.push(...found.records.map((r) => ({ row: r.row + offset, data: r.data })));
   }
 
-  const body = candidates.join('\n');
-  const table = tryMarkdownTable(body, ctx, issues);
-  if (table?.length) return { format: 'table', records: table, issues };
-
-  const csv = tryCsv(body, ctx, issues);
-  if (csv?.length) return { format: 'csv', records: csv, issues };
-
-  const list = tryList(body);
-  if (list) return { format: 'list', records: list, issues };
-
-  issues.push({
-    row: null,
-    severity: 'error',
-    message:
-      'Could not find any words. Paste the JSON or CSV answer from the AI, a Markdown table, or lines like "chleb – bread".',
-  });
-  return { format: null, records: [], issues };
+  if (!records.length) {
+    issues.push({
+      row: null,
+      severity: 'error',
+      message:
+        'Could not find any words. Paste the JSON or CSV answer from the AI, a Markdown table, or lines like "chleb – bread".',
+    });
+  }
+  return { format, records, issues };
 }

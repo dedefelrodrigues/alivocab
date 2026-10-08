@@ -7,7 +7,13 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     pos: 'phrase',
     translations: ['good morning', 'hello'],
     pronunciation: 'd͡ʑɛɲ ˈdɔbrɨ',
-    examples: [{ text: 'Dzień dobry, poproszę kawę.', translation: 'Hello, a coffee please.', cloze: 'Dzień dobry' }],
+    examples: [
+      {
+        text: 'Dzień dobry, poproszę kawę.',
+        translation: 'Hello, a coffee please.',
+        cloze: 'Dzień dobry',
+      },
+    ],
     status: 'known',
   },
   {
@@ -16,8 +22,15 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     aspect: 'impf',
     aspectPair: 'podziękować',
     translations: ['to thank'],
-    forms: { pres_1sg: 'dziękuję', pres_2sg: 'dziękujesz', pres_3pl: 'dziękują', past_m: 'dziękował' },
-    examples: [{ text: 'Dziękuję za pomoc!', translation: 'Thank you for the help!', cloze: 'Dziękuję' }],
+    forms: {
+      pres_1sg: 'dziękuję',
+      pres_2sg: 'dziękujesz',
+      pres_3pl: 'dziękują',
+      past_m: 'dziękował',
+    },
+    examples: [
+      { text: 'Dziękuję za pomoc!', translation: 'Thank you for the help!', cloze: 'Dziękuję' },
+    ],
     status: 'recognize',
   },
   {
@@ -27,7 +40,9 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     translations: ['bread'],
     forms: { gen_sg: 'chleba', nom_pl: 'chleby', ins_sg: 'chlebem' },
     pronunciation: 'xlɛp',
-    examples: [{ text: 'Kupiłem świeży chleb.', translation: 'I bought fresh bread.', cloze: 'chleb' }],
+    examples: [
+      { text: 'Kupiłem świeży chleb.', translation: 'I bought fresh bread.', cloze: 'chleb' },
+    ],
     notes: 'Final -b is pronounced [p].',
     status: 'unknown',
   },
@@ -37,7 +52,9 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     gender: 'f',
     translations: ['water'],
     forms: { gen_sg: 'wody', nom_pl: 'wody', ins_sg: 'wodą' },
-    examples: [{ text: 'Poproszę szklankę wody.', translation: 'A glass of water, please.', cloze: 'wody' }],
+    examples: [
+      { text: 'Poproszę szklankę wody.', translation: 'A glass of water, please.', cloze: 'wody' },
+    ],
     status: 'known',
   },
   {
@@ -46,7 +63,9 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     gender: 'n',
     translations: ['flat', 'apartment'],
     forms: { gen_sg: 'mieszkania', nom_pl: 'mieszkania', ins_sg: 'mieszkaniem' },
-    examples: [{ text: 'Moje mieszkanie jest małe.', translation: 'My flat is small.', cloze: 'mieszkanie' }],
+    examples: [
+      { text: 'Moje mieszkanie jest małe.', translation: 'My flat is small.', cloze: 'mieszkanie' },
+    ],
     status: 'unknown',
   },
   {
@@ -56,7 +75,9 @@ export const SAMPLE_WORDS: TaggedWord[] = [
     aspectPair: 'powiedzieć',
     translations: ['to speak', 'to say'],
     forms: { pres_1sg: 'mówię', pres_2sg: 'mówisz', pres_3pl: 'mówią', past_m: 'mówił' },
-    examples: [{ text: 'Mówię trochę po polsku.', translation: 'I speak a little Polish.', cloze: 'Mówię' }],
+    examples: [
+      { text: 'Mówię trochę po polsku.', translation: 'I speak a little Polish.', cloze: 'Mówię' },
+    ],
     status: 'recognize',
   },
   {

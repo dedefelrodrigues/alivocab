@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BATCH_SEPARATOR } from './extract.ts';
 import { parseVocabulary } from './parse.ts';
 
 const opts = { lang: 'pl', nativeLang: 'en' };
@@ -220,5 +221,59 @@ describe('parseVocabulary: validation and cleanup', () => {
     const { words, issues } = parse('I could not come up with anything, sorry.');
     expect(words).toEqual([]);
     expect(issues[0]?.severity).toBe('error');
+  });
+});
+
+describe('parseVocabulary: regressions from real model output', () => {
+  // Qwen 2.5 1.5B in the browser: our batch fence wrapped the model's own ```json fence.
+  const nested = (translation: string) =>
+    '```\n<think>\n\n</think>\n\n```json\n{\n  "words": [\n    {"lemma": "piekarnia", "pos": "noun", "gender": "f", "translations": ["' +
+    translation +
+    '"], "forms": {}, "pronunciation": "", "examples": [], "notes": ""}\n  ]\n}\n```\n```';
+
+  it('reads JSON inside nested or unbalanced fences', () => {
+    const { words } = parse(nested('bakery'));
+    expect(words.map((w) => [w.lemma, w.translations])).toEqual([['piekarnia', ['bakery']]]);
+  });
+
+  it('reports rows whose translations were left empty', () => {
+    const { words, issues } = parse(nested(''));
+    expect(words).toEqual([]);
+    expect(issues[0]).toMatchObject({
+      row: 1,
+      severity: 'error',
+      message: 'Missing translation; row skipped',
+    });
+  });
+
+  it('treats copied template placeholders as missing', () => {
+    const raw = JSON.stringify({
+      words: [
+        { lemma: '<Polish word>', pos: 'noun', translations: ['<English translation>'] },
+        {
+          lemma: 'mąka',
+          pos: 'noun',
+          translations: ['flour'],
+          pronunciation: '<IPA>',
+          examples: [
+            { text: '<Polish sentence>', translation: '<English translation of the sentence>' },
+          ],
+        },
+      ],
+    });
+    const { words, issues } = parse(raw);
+    expect(words).toHaveLength(1);
+    expect(words[0]).toMatchObject({ lemma: 'mąka', pronunciation: null, examples: [] });
+    expect(issues[0]?.message).toContain('Missing word');
+  });
+
+  it('reads each batch separately, whatever format each one used', () => {
+    const raw = [
+      '```json\n{"words":[{"lemma":"a","pos":"noun","translations":["x"]}]}\n```',
+      'Sure!\n{"words":[{"lemma":"b","pos":"noun","translations":["y"]}]}',
+      'c – z',
+    ].join(BATCH_SEPARATOR);
+    const { words } = parse(raw);
+    expect(words.map((w) => w.lemma)).toEqual(['a', 'b', 'c']);
   });
 });

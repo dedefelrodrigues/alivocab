@@ -178,9 +178,29 @@ export function ReviewStep({
       )}
 
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-          No usable words were found. Go back and try again.
-        </p>
+        <div className="space-y-3 rounded-lg border border-dashed p-4">
+          <p className="font-medium">No usable words were found in the answer.</p>
+          <p className="text-sm text-muted-foreground">
+            The problems are listed above. Small on-device models often leave fields empty or copy
+            the template; a larger model, an API key or the copy &amp; paste route usually works
+            better.
+          </p>
+          {proposal.rawOutput.trim() ? (
+            <details>
+              <summary className="cursor-pointer text-sm font-medium">
+                What the model answered
+              </summary>
+              <pre className="mt-2 max-h-72 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
+                {proposal.rawOutput}
+              </pre>
+            </details>
+          ) : (
+            <p className="text-sm text-muted-foreground">The model returned an empty answer.</p>
+          )}
+          <Button variant="outline" onClick={() => onBack(proposal.rawOutput)}>
+            <ArrowLeft /> Back
+          </Button>
+        </div>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 text-sm">

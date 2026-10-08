@@ -25,8 +25,13 @@ export type ParseResult = {
   issues: ImportIssue[];
 };
 
-const str = (v: unknown): string =>
-  typeof v === 'string' ? normalizeText(v) : typeof v === 'number' ? String(v) : '';
+/** Template placeholders a model copied verbatim (`<Polish word>`, `...`) count as empty. */
+const PLACEHOLDER_RE = /^(?:<[^<>]*>|\.{2,}|…|-|n\/a|null|none|undefined)$/i;
+
+const str = (v: unknown): string => {
+  const text = typeof v === 'string' ? normalizeText(v) : typeof v === 'number' ? String(v) : '';
+  return PLACEHOLDER_RE.test(text) ? '' : text;
+};
 
 /** Remaps arbitrary JSON keys onto our field names (`Polish` → lemma, `meaning` → translations…). */
 function canonicalize(data: Record<string, unknown>, opts: ParseOptions): Record<string, unknown> {

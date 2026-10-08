@@ -1,4 +1,4 @@
-import { buildVocabPrompt, parseVocabulary } from '@alivocab/core';
+import { BATCH_SEPARATOR, buildVocabPrompt, parseVocabulary } from '@alivocab/core';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Cpu, Download, Loader2, TriangleAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -96,7 +96,7 @@ export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
           avoid,
         });
         const text = await engine.current.generate(prompt);
-        outputs.push(`\`\`\`\n${text.trim()}\n\`\`\``);
+        outputs.push(text.trim());
         const parsed = parseVocabulary(text, { lang, nativeLang });
         const fresh = parsed.words.filter((w) => !avoid.includes(w.lemma));
         if (!fresh.length) break;
@@ -107,7 +107,7 @@ export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
       return unwrap(
         api.generate.import.$post({
           json: {
-            raw: outputs.join('\n\n'),
+            raw: outputs.join(BATCH_SEPARATOR),
             source: 'browser',
             model: engineId,
             themeName: setup.themeName,

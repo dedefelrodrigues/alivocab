@@ -97,4 +97,42 @@ describe('generateInBatches', () => {
       generateInBatches({ model, lang: 'pl', total: 2, prompt: () => 'p', parse }),
     ).rejects.toThrow();
   });
+
+  it('reports an empty answer caused by reasoning using up the budget', async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: 'reasoning', text: 'thinking… '.repeat(100) }],
+        finishReason: { unified: 'length', raw: 'length' },
+        usage,
+        warnings: [],
+      }),
+    });
+    await expect(
+      generateInBatches({ model, lang: 'pl', total: 3, prompt: () => 'p', parse }),
+    ).rejects.toThrow(/whole answer budget on reasoning/);
+  });
+
+  it('asks for no reasoning when requested', async () => {
+    const seen: unknown[] = [];
+    const model = new MockLanguageModelV4({
+      doGenerate: async (options) => {
+        seen.push(options);
+        return {
+          content: [{ type: 'text', text: answer('a') }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage,
+          warnings: [],
+        };
+      },
+    });
+    await generateInBatches({
+      model,
+      lang: 'pl',
+      total: 1,
+      prompt: () => 'p',
+      parse,
+      disableReasoning: true,
+    });
+    expect(JSON.stringify(seen[0])).toContain('"reasoning":"none"');
+  });
 });

@@ -46,8 +46,8 @@ Rules:
 - "examples": one natural, level-appropriate Polish sentence using the word, with its English translation, and "cloze" = the word exactly as it appears in the sentence (inflected form).
 - "notes": optional short tip (irregularity, false friend, register). Leave empty if nothing useful.
 
-Answer with ONLY a JSON object, no commentary, in exactly this shape:
+Answer with ONLY a JSON object, no commentary. Use this shape and replace every <…> with real content (never leave fields empty except "notes"):
 \`\`\`json
-{"words":[{"lemma":"","pos":"noun","gender":"m","aspect":null,"aspect_pair":null,"translations":[""],"forms":{"key":"form"},"pronunciation":"","examples":[{"text":"","translation":"","cloze":""}],"notes":""}]}
+{"words":[{"lemma":"<Polish word>","pos":"noun","gender":"m","aspect":null,"aspect_pair":null,"translations":["<English translation>"],"forms":{"<form name>":"<form>"},"pronunciation":"<IPA>","examples":[{"text":"<Polish sentence>","translation":"<English translation of the sentence>","cloze":"<the word as it appears in the sentence>"}],"notes":""}]}
 \`\`\`"
 `;

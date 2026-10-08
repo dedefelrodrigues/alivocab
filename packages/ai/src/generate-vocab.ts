@@ -1,6 +1,6 @@
-import { dedupeKey } from '@alivocab/core';
+import { BATCH_SEPARATOR, dedupeKey } from '@alivocab/core';
 import type { ImportIssue, VocabWord } from '@alivocab/shared';
-import { generateText, type LanguageModel } from 'ai';
+import { APICallError, generateText, type LanguageModel } from 'ai';
 import { describeAiError } from './errors.ts';
 
 export type BatchOptions = {
@@ -16,12 +16,17 @@ export type BatchOptions = {
   /** Lemmas to exclude from the start (e.g. already in the theme). */
   avoid?: string[];
   timeoutMs?: number;
+  /**
+   * Ask the model not to "think" first. Word lists don't need it, and reasoning models
+   * (e.g. DeepSeek V4) otherwise spend the whole output budget before answering.
+   */
+  disableReasoning?: boolean;
 };
 
 export type BatchResult = {
   words: VocabWord[];
   issues: ImportIssue[];
-  /** All raw answers, each wrapped in a ``` fence so the import parser can re-read them. */
+  /** All raw answers joined with BATCH_SEPARATOR, so the import parser can re-read them. */
   rawOutput: string;
   prompts: string[];
   tokensIn: number;
@@ -56,17 +61,37 @@ export async function generateInBatches(opts: BatchOptions): Promise<BatchResult
     result.prompts.push(prompt);
 
     let text: string;
-    let usage: { inputTokens?: number; outputTokens?: number };
     try {
-      ({ text, usage } = await generateText({
-        model: opts.model,
-        instructions: INSTRUCTIONS,
-        prompt,
-        temperature: 0.7,
-        maxOutputTokens: Math.min(16_000, 350 * count + 600),
-        maxRetries: 1,
-        timeout: opts.timeoutMs ?? 120_000,
-      }));
+      const call = (reasoning: 'none' | undefined) =>
+        generateText({
+          model: opts.model,
+          instructions: INSTRUCTIONS,
+          prompt,
+          temperature: 0.7,
+          maxOutputTokens: Math.min(8_000, 300 * count + 600),
+          maxRetries: 1,
+          timeout: opts.timeoutMs ?? 180_000,
+          ...(reasoning ? { reasoning } : {}),
+        });
+      let response: Awaited<ReturnType<typeof call>>;
+      try {
+        response = await call(opts.disableReasoning ? 'none' : undefined);
+      } catch (err) {
+        // Some models reject "no reasoning"; fall back to their default once.
+        if (!opts.disableReasoning || !APICallError.isInstance(err) || err.statusCode !== 400)
+          throw err;
+        response = await call(undefined);
+      }
+      text = response.text;
+      result.tokensIn += response.usage.inputTokens ?? 0;
+      result.tokensOut += response.usage.outputTokens ?? 0;
+      if (!text.trim()) {
+        throw new Error(
+          response.finishReason === 'length'
+            ? 'The model used its whole answer budget on reasoning and returned no words. Try a non-reasoning model (e.g. deepseek-chat) or fewer words.'
+            : `The model returned an empty answer (finish reason: ${response.finishReason}).`,
+        );
+      }
     } catch (err) {
       // Keep what earlier batches produced; only fail outright on the first call.
       if (!result.words.length) throw err;
@@ -77,9 +102,7 @@ export async function generateInBatches(opts: BatchOptions): Promise<BatchResult
       });
       break;
     }
-    result.tokensIn += usage.inputTokens ?? 0;
-    result.tokensOut += usage.outputTokens ?? 0;
-    result.rawOutput += `${result.rawOutput ? '\n\n' : ''}\`\`\`\n${text.trim()}\n\`\`\``;
+    result.rawOutput += `${result.rawOutput ? BATCH_SEPARATOR : ''}${text.trim()}`;
 
     const parsed = opts.parse(text);
     const label = maxRounds > 2 ? `Batch ${round}: ` : '';

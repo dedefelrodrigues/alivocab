@@ -1,7 +1,7 @@
 import { type CefrLevel, languageName, type ProposalFormat } from '@alivocab/shared';
 
 /** Bump when the template changes in a way that affects output (stored with each generation). */
-export const VOCAB_PROMPT_VERSION = 'vocab-proposal@1';
+export const VOCAB_PROMPT_VERSION = 'vocab-proposal@2';
 
 export type VocabPromptInput = {
   targetLang: string;
@@ -86,11 +86,29 @@ export function buildVocabPrompt(input: VocabPromptInput): string {
 
   if (input.format === 'json') {
     lines.push(
-      'Answer with ONLY a JSON object, no commentary, in exactly this shape:',
+      'Answer with ONLY a JSON object, no commentary. Use this shape and replace every <…> with real content (never leave fields empty except "notes"):',
       '```json',
-      '{"words":[{"lemma":"","pos":"noun","gender":"m",' +
-        (hasAspect ? '"aspect":null,"aspect_pair":null,' : '') +
-        '"translations":[""],"forms":{"key":"form"},"pronunciation":"","examples":[{"text":"","translation":"","cloze":""}],"notes":""}]}',
+      JSON.stringify({
+        words: [
+          {
+            lemma: `<${target} word>`,
+            pos: 'noun',
+            gender: 'm',
+            ...(hasAspect ? { aspect: null, aspect_pair: null } : {}),
+            translations: [`<${native} translation>`],
+            forms: { '<form name>': '<form>' },
+            pronunciation: '<IPA>',
+            examples: [
+              {
+                text: `<${target} sentence>`,
+                translation: `<${native} translation of the sentence>`,
+                cloze: '<the word as it appears in the sentence>',
+              },
+            ],
+            notes: '',
+          },
+        ],
+      }),
       '```',
     );
   } else {

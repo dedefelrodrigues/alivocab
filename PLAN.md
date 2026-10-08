@@ -31,6 +31,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
 | D21 | Shared-word edits | Dictionary fields (gender, forms, translations, IPA) are editable only while no other user has the word (or by an admin). Notes/mnemonics are always private and editable |
 | D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
+| D23 | Pictures | Optional picture per word from free photo search (Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -75,14 +76,21 @@ user_profiles       user_id PK, target_lang, native_lang,
                     default_word_count (30), default_ai_source, tts_provider, tts_voice,
                     daily_new_limit (20), daily_review_limit (200),
                     color_palette ('auto' | preset id, default 'auto'),
-                    color_mode (system|light|dark, default 'system'), created_at, updated_at
+                    color_mode (system|light|dark, default 'system'),
+                    auto_pictures (default true), created_at, updated_at
 ai_credentials      id, user_id, provider (anthropic|openai|deepseek|google|openrouter|openai_compat),
                     label, base_url?, default_model, key_ciphertext, key_iv, key_tag, key_last4,
                     created_at, updated_at
 
 lexemes             id, lang, lemma, normalized_lemma, pos, gender?, aspect?, aspect_pair_lemma?,
-                    forms_json?, pronunciation?, frequency_rank?, created_at
+                    forms_json?, pronunciation?, frequency_rank?,
+                    image_query? (English search phrase, '' = not picturable),
+                    image_id? → lexeme_images (shared default), image_searched_at?, created_at
                     UNIQUE(lang, normalized_lemma, pos)
+lexeme_images       id, lexeme_id, provider (openverse|pexels|upload), provider_id?, file_key,
+                    width, height, title?, creator?, creator_url?, license?, license_url?,
+                    source_url?, created_by?, created_at
+                    UNIQUE(lexeme_id, provider, provider_id)
 lexeme_translations id, lexeme_id, lang, text, sort
                     UNIQUE(lexeme_id, lang, text)
 example_sentences   id, lexeme_id, lang, text, translation, translation_lang,
@@ -96,6 +104,7 @@ theme_lexemes       theme_id, lexeme_id, position, added_at, generation_id?
 
 user_lexemes        user_id, lexeme_id, status (untagged|unknown|recognize|known),
                     status_source (manual|derived), note?, mnemonic?,
+                    image_id? (personal picture), image_hidden,
                     exposure_count, correct_count, incorrect_count, first_seen_at, last_seen_at
                     PK(user_id, lexeme_id)
 cards               id, user_id, lexeme_id, direction (recognition|recall),
@@ -178,6 +187,31 @@ the reason, and the valid rows still import.
   the raw output is always stored in `ai_generations` so the user can retry parsing or edit it by hand.
 - Rate limit AI endpoints per user (simple token bucket in memory, later SQLite).
 
+### 4.4 Pictures (`apps/api/src/lib/pictures`)
+- **Sources**: Openverse (CC-licensed, no key; anonymous limit about 20/min and 200/day per server,
+  uncached queries can take ~10 s) and Pexels when `PEXELS_API_KEY` is set. Uploads (any image sharp can read,
+  ≤ 8 MB) are private to the uploader and never become the shared default.
+- **Search phrase**: the vocab prompt (`vocab-proposal@3`) asks for an English `image_query`
+  per word, or `none` for words that can't be pictured (adjectives like *dojrzały*, abstract verbs).
+  Pasted lists without the column fall back to the first translation, for nouns only.
+- **Auto-pick**: `saveWords()` returns the lexeme ids, and the theme routes queue them
+  (`pictures.enqueue`) when `user_profiles.auto_pictures` is on. A small background queue in the API
+  process searches, downloads the top hit and stores it. A word is marked `image_searched_at` only
+  when a provider actually answered, so outages and rate limits are retried later ("Find missing
+  pictures" in the theme menu forces a retry). The theme page polls while `picturesPending > 0`.
+- **Storage**: downloads go through `assertPublicUrl` with manual redirects (SSRF guard), are resized
+  with sharp to a 480 px WebP + a 96 px thumbnail under `MEDIA_DIR`, and are served by
+  `/api/media/:name` (auth, immutable cache, PWA runtime cache). Never hotlink provider URLs.
+- **Who sees what** (`resolvePictures`): hidden → none, else the user's own choice, else the shared
+  default on the lexeme. Choosing a search result replaces the shared default only while no other
+  user has the word (or as admin), mirroring D21.
+- **UI**: a 40 px thumbnail in each theme word row (first-letter tile fallback, pulsing while
+  pending), a larger figure with the attribution line and *Change picture* when the row is
+  expanded, and a picker dialog (search, upload, "No picture for this word"). On flashcards the
+  picture shows on the recall front (native → target) and on the answer side, never on the
+  recognition front, where it would give the answer away.
+- Later: picture-based exercises in Phase 4 ("pick the picture" MCQ, "name what you see").
+
 ---
 
 ## 5. Learning engine
@@ -223,8 +257,8 @@ Every rendered word in an exercise or script writes an `exposures` row (batched,
 
 | Type | Phase | AI needed? | Notes |
 |------|-------|------------|-------|
-| Flashcards | 3 | no | Flip animation, 4-button rating, swipe on mobile, TTS button |
-| Multiple choice | 4 | no | Distractors: same theme + same POS (+ same gender for nouns) first, then the global pool. Both directions |
+| Flashcards | 3 | no | Flip animation, 4-button rating, swipe on mobile, TTS button, picture on the recall front and the answer side |
+| Multiple choice | 4 | no | Distractors: same theme + same POS (+ same gender for nouns) first, then the global pool. Both directions, plus a picture variant (word → pick the picture, picture → pick the word) |
 | Fill-in (cloze) | 4 | optional | Uses `example_sentences.cloze_target`. Lemma hint and word bank, or free typing. Answers are diacritic-tolerant with a warning. If a word has no sentences, it gets them from AI on demand (cached) |
 | Listening scripts | 5 | yes (cached) | AI writes a short dialogue or monologue using N theme words at the user's level, with a transcript (hidden until revealed), comprehension MCQs and a word list. Playback uses Web Speech or cloud TTS per sentence, with speed control and per-speaker voices |
 | Grammar notes | 5 | yes (cached) | Per-theme mini lesson ("Instrumental after *z*", "aspect pairs of the verbs in this theme") using examples from the user's words |
@@ -391,7 +425,14 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > end. The offline shell caches the app only: reviewing offline (queued grades) is a later item.
 > The service worker is only active in production builds.
 
+### Pictures (between Phases 3 and 4, see §4.4)
+- [x] `lexeme_images` + per-user choice/hide, Openverse + optional Pexels, sharp storage, media route
+- [x] Prompt `image_query`, background auto-pick after save, "Find missing pictures"
+- [x] Theme list thumbnails + expanded figure with attribution, picker (search/upload/hide)
+- [x] Pictures on flashcards (recall front + answer side), PWA cache for pictures
+
 ### Phase 4: MCQ, cloze, lessons, stats
+- [ ] Picture exercises: "pick the picture" MCQ and "name what you see" (words with a picture only)
 - [ ] Distractor selection (`core/exercises/mcq`), cloze builder, answer checker (diacritic-aware, Levenshtein ≤ 1 typo tolerance → `Hard`)
 - [ ] On-demand example-sentence generation (cached)
 - [ ] Lesson builder + session summary

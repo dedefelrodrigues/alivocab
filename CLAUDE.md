@@ -115,6 +115,12 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   `apps/api/src/lib/srs.ts` owns the queue, grading and summary. Every graded interaction must go
   through `gradeCard()`, which writes the review log, the exposure, the counters and the status.
   New words get cards via `createCards()` in `saveWords()`. Manual re-tags call `reseedCards()`.
+- Pictures: everything goes through the picture service (`apps/api/src/lib/pictures`, `deps.pictures`).
+  Which picture a user sees is decided only by `resolvePictures()` (hidden → own choice → shared
+  default). Downloads must go through `downloadImage()` (SSRF guard, size cap, sharp re-encode).
+  Never hotlink provider URLs. New words are queued with `pictures.enqueue(lexemeIds)` after
+  `saveWords()` when the profile's `autoPictures` is on. Tests use `createTestApp()`'s temp media
+  dir and mocked fetch, never the real providers. See PLAN.md §4.4.
 - `packages/ai` is server-only (AI SDK + provider SDKs). In-browser models live in
   `apps/web/src/features/browser-ai` and are lazy-loaded (WebLLM is about 6 MB).
 - The web app calls the API via `api` (Hono RPC) + `unwrap()` (`src/lib/api.ts`). Query options

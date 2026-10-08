@@ -1,2 +1,4 @@
-// AI provider layer. Phase 1: credential checks. Phase 2 adds the AI SDK model registry (PLAN.md §4.3).
+export * from './errors.ts';
+export * from './generate-vocab.ts';
+export * from './models.ts';
 export * from './test-credential.ts';

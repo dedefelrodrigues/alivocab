@@ -106,6 +106,13 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   (not 403) for other users' ids.
 - Sign-up requires the `x-invite-code` header (`INVITE_HEADER`). Roles, banning and admin password
   resets use Better Auth's admin plugin (`authClient.admin.*` on the web).
+- Vocabulary writes go through `saveWords()` (`apps/api/src/lib/vocab.ts`): it dedupes on
+  `(lang, normalized_lemma, pos)`, only *fills* missing shared fields, links the word to the theme and
+  records the user's tag. Never insert into `lexemes` directly from a route.
+- AI output of any origin goes through `parseVocabulary()` (`packages/core/src/import`). When a new
+  messy-output case shows up, add it to `parse.test.ts` first.
+- `packages/ai` is server-only (AI SDK + provider SDKs). In-browser models live in
+  `apps/web/src/features/browser-ai` and are lazy-loaded (WebLLM is about 6 MB).
 - The web app calls the API via `api` (Hono RPC) + `unwrap()` (`src/lib/api.ts`). Query options
   live in `src/lib/queries.ts`. Profile changes go through `useUpdateProfile()` (optimistic, and
   also applies appearance).

@@ -1,7 +1,7 @@
 import type { ColorMode } from '@alivocab/shared/appearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Home, LogOut, Monitor, Moon, Settings, Shield, Sun } from 'lucide-react';
+import { BookOpen, Home, LogOut, Monitor, Moon, Settings, Shield, Sun } from 'lucide-react';
 import { useAppearance } from '@/appearance/AppearanceProvider';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,6 +46,10 @@ export function AppHeader() {
           <Link to="/" className={navLinkClass} activeOptions={{ exact: true }}>
             <Home className="size-4" />
             <span className="hidden sm:inline">Home</span>
+          </Link>
+          <Link to="/themes" className={navLinkClass}>
+            <BookOpen className="size-4" />
+            <span className="hidden sm:inline">Themes</span>
           </Link>
           <Link to="/settings" className={navLinkClass}>
             <Settings className="size-4" />

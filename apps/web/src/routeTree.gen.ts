@@ -15,6 +15,9 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppThemesIndexRouteImport } from './routes/_app/themes/index'
+import { Route as AppThemesThemeIdRouteImport } from './routes/_app/themes/$themeId'
+import { Route as AppThemesNewRouteImport } from './routes/_app/themes/new'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -45,6 +48,21 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppThemesIndexRoute = AppThemesIndexRouteImport.update({
+  id: '/themes/',
+  path: '/themes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppThemesThemeIdRoute = AppThemesThemeIdRouteImport.update({
+  id: '/themes/$themeId',
+  path: '/themes/$themeId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppThemesNewRoute = AppThemesNewRouteImport.update({
+  id: '/themes/new',
+  path: '/themes/new',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -52,6 +70,9 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
   '/settings': typeof AppSettingsRoute
+  '/themes/$themeId': typeof AppThemesThemeIdRoute
+  '/themes/new': typeof AppThemesNewRoute
+  '/themes/': typeof AppThemesIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -59,6 +80,9 @@ export interface FileRoutesByTo {
   '/admin': typeof AppAdminRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
+  '/themes/$themeId': typeof AppThemesThemeIdRoute
+  '/themes/new': typeof AppThemesNewRoute
+  '/themes': typeof AppThemesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -68,12 +92,31 @@ export interface FileRoutesById {
   '/_app/admin': typeof AppAdminRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/themes/$themeId': typeof AppThemesThemeIdRoute
+  '/_app/themes/new': typeof AppThemesNewRoute
+  '/_app/themes/': typeof AppThemesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/register' | '/admin' | '/settings'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/register'
+    | '/admin'
+    | '/settings'
+    | '/themes/$themeId'
+    | '/themes/new'
+    | '/themes/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/register' | '/admin' | '/settings' | '/'
+  to:
+    | '/login'
+    | '/register'
+    | '/admin'
+    | '/settings'
+    | '/'
+    | '/themes/$themeId'
+    | '/themes/new'
+    | '/themes'
   id:
     | '__root__'
     | '/_app'
@@ -82,6 +125,9 @@ export interface FileRouteTypes {
     | '/_app/admin'
     | '/_app/settings'
     | '/_app/'
+    | '/_app/themes/$themeId'
+    | '/_app/themes/new'
+    | '/_app/themes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -134,6 +180,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/themes/': {
+      id: '/_app/themes/'
+      path: '/themes'
+      fullPath: '/themes/'
+      preLoaderRoute: typeof AppThemesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/themes/$themeId': {
+      id: '/_app/themes/$themeId'
+      path: '/themes/$themeId'
+      fullPath: '/themes/$themeId'
+      preLoaderRoute: typeof AppThemesThemeIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/themes/new': {
+      id: '/_app/themes/new'
+      path: '/themes/new'
+      fullPath: '/themes/new'
+      preLoaderRoute: typeof AppThemesNewRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -141,12 +208,18 @@ interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppThemesThemeIdRoute: typeof AppThemesThemeIdRoute
+  AppThemesNewRoute: typeof AppThemesNewRoute
+  AppThemesIndexRoute: typeof AppThemesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppThemesThemeIdRoute: AppThemesThemeIdRoute,
+  AppThemesNewRoute: AppThemesNewRoute,
+  AppThemesIndexRoute: AppThemesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

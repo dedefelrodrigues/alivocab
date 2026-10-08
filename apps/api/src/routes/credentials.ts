@@ -9,6 +9,7 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { decryptKey, findOwnedCredential } from '../lib/credentials.ts';
 import { keyLast4 } from '../lib/crypto.ts';
 import { assertPublicUrl } from '../lib/net.ts';
 import { validate } from '../lib/validate.ts';
@@ -44,16 +45,7 @@ export const credentialRoutes = (deps: AppDeps) => {
     }
   };
 
-  /** Loads a credential owned by the user, or 404 (never reveals other users' ids). */
-  const findOwned = (userId: string, id: string): Row => {
-    const row = db
-      .select()
-      .from(aiCredentials)
-      .where(and(eq(aiCredentials.id, id), eq(aiCredentials.userId, userId)))
-      .get();
-    if (!row) throw new HTTPException(404, { message: 'Credential not found' });
-    return row;
-  };
+  const findOwned = (userId: string, id: string) => findOwnedCredential(db, userId, id);
 
   const runTest = async (
     input: Parameters<typeof testCredential>[0],
@@ -151,10 +143,7 @@ export const credentialRoutes = (deps: AppDeps) => {
       .post('/:id/test', async (c) => {
         const userId = c.get('user').id;
         const row = findOwned(userId, c.req.param('id'));
-        const apiKey = secretBox.decrypt(
-          { ciphertext: row.keyCiphertext, iv: row.keyIv, tag: row.keyTag },
-          userId,
-        );
+        const apiKey = decryptKey(secretBox, row, userId);
         const result = await runTest({ provider: row.provider, apiKey, baseUrl: row.baseUrl });
         db.update(aiCredentials)
           .set({ lastTestedAt: new Date(), lastTestOk: result.ok })

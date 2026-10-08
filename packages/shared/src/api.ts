@@ -51,7 +51,15 @@ export type MeDto = {
 
 export const AI_PROVIDER_INFO: Record<
   AiProvider,
-  { label: string; keyUrl?: string; needsBaseUrl: boolean; keyOptional: boolean; hint: string }
+  {
+    label: string;
+    keyUrl?: string;
+    needsBaseUrl: boolean;
+    keyOptional: boolean;
+    hint: string;
+    /** Used when the credential has no default model; absent = the user must choose one. */
+    defaultModel?: string;
+  }
 > = {
   anthropic: {
     label: 'Anthropic (Claude)',
@@ -59,6 +67,7 @@ export const AI_PROVIDER_INFO: Record<
     needsBaseUrl: false,
     keyOptional: false,
     hint: 'Best quality for Polish grammar. Paid API.',
+    defaultModel: 'claude-sonnet-5-5',
   },
   openai: {
     label: 'OpenAI',
@@ -73,6 +82,7 @@ export const AI_PROVIDER_INFO: Record<
     needsBaseUrl: false,
     keyOptional: false,
     hint: 'Low-cost API.',
+    defaultModel: 'deepseek-chat',
   },
   google: {
     label: 'Google Gemini',
@@ -80,6 +90,7 @@ export const AI_PROVIDER_INFO: Record<
     needsBaseUrl: false,
     keyOptional: false,
     hint: 'Has a free tier: create a key in Google AI Studio.',
+    defaultModel: 'gemini-2.5-flash',
   },
   openrouter: {
     label: 'OpenRouter',

@@ -34,3 +34,14 @@ export const usersQuery = queryOptions({
     return data.users;
   },
 });
+
+export const themesQuery = queryOptions({
+  queryKey: ['themes'],
+  queryFn: () => unwrap(api.themes.$get()),
+});
+
+export const themeQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['themes', id],
+    queryFn: () => unwrap(api.themes[':id'].$get({ param: { id } })),
+  });

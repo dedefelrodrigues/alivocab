@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phase 1 done** (DB, auth, settings). Next: Phase 2. Each phase ends in a usable, committed state.
+Status: **Phase 2 done** (themes, generation, import, tagging). Next: Phase 3 (SRS + flashcards, MVP). Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -29,6 +29,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D18 | Light/dark | `system` (default) / `light` / `dark`. Palette and mode are **both saved to the account** and follow the user across devices |
 | D19 | Roles & user admin | Better Auth **admin plugin**: `user.role` (`user`/`admin`), ban/unban, admin-set password, role changes. No custom role column |
 | D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
+| D21 | Shared-word edits | Dictionary fields (gender, forms, translations, IPA) are editable only while no other user has the word (or by an admin). Notes/mnemonics are always private and editable |
+| D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -45,7 +47,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 │ React + TanStack Router/Query          │  HTTPS │ /api/auth/*      Better Auth (+ invite gate)     │
 │ Hono RPC client (typed)                │◄──────►│ /api/settings    user prefs, AI credentials      │
 │ Web Speech TTS                         │ cookie │ /api/themes      themes, proposals, tagging      │
-│ WebLLM / Chrome AI (optional, local)   │        │ /api/import      paste/browser-AI ingestion      │
+│ WebLLM / Chrome AI (optional, local)   │        │ /api/generate    prompt, AI, paste/browser import│
 │ Copy-prompt / paste-import UI          │        │ /api/review      SRS queue, grading              │
 └────────────────────────────────────────┘        │ /api/lessons     exercises, scripts, drills      │
                                                   │ /api/tts         cloud TTS proxy + cache         │
@@ -134,9 +136,9 @@ Indexes: `cards(user_id, due)`, `user_lexemes(user_id, status)`, `theme_lexemes(
      schema) against the zod schema. Counts above 30 are split into batches of ~25 run in sequence,
      with the avoid list growing between batches.
    - **Browser**: WebLLM (e.g. Qwen2.5-3B / Llama-3.2-3B) or Chrome's `LanguageModel` runs the
-     same prompt, and the raw text is POSTed to `/api/import`.
+     same prompt (in batches of 10), and the raw text is POSTed to `/api/generate/import`.
    - **Manual**: the UI shows the prompt with a *Copy* button. The user pastes the reply into a
-     textarea → `/api/import`.
+     textarea → `/api/generate/import`.
 4. **Review screen**: a list or one card at a time (mobile). Each row shows the lemma, translation,
    POS/gender and an example, with three big buttons: *Known* / *Recognize* / *Don't know* (keys
    1/2/3), plus *Edit* and *Discard*. Words already in the user's dictionary show a "already
@@ -355,17 +357,22 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 **Done when** you can register with an invite, log in on phone and desktop, and save an encrypted API key.
 
 ### Phase 2: Themes, generation, import, tagging
-- [ ] Seed a sample theme for the dev admin
-- [ ] `core/prompts/vocabProposal` + snapshot tests
-- [ ] `core/import`: tolerant JSON/CSV parser + normalization + per-row validation report (heavily unit-tested with messy LLM outputs)
-- [ ] `packages/ai` provider registry (Anthropic, OpenAI, DeepSeek, Google, OpenRouter, OpenAI-compatible) + batching
-- [ ] Endpoints: create theme, generate (API), import (paste/browser), save tagged proposal
-- [ ] UI: new-theme wizard, AI-source picker, copy-prompt panel, paste box with live parse preview, review/tag screen (keyboard + mobile)
-- [ ] Browser AI: Chrome Prompt API detection, WebLLM with a model picker, download progress and a WebGPU capability check (lazy-loaded chunk)
-- [ ] Dedupe + multi-theme linking, "already learning" badges
-- [ ] Theme list + theme detail (words, status filter, edit word, add word manually)
+- [x] Seed a sample theme for the dev admin
+- [x] `core/prompts/vocabProposal` + snapshot tests
+- [x] `core/import`: tolerant JSON/CSV parser + normalization + per-row validation report (heavily unit-tested with messy LLM outputs)
+- [x] `packages/ai` provider registry (Anthropic, OpenAI, DeepSeek, Google, OpenRouter, OpenAI-compatible) + batching
+- [x] Endpoints: create theme, generate (API), import (paste/browser), save tagged proposal
+- [x] UI: new-theme wizard, AI-source picker, copy-prompt panel, paste box with live parse preview, review/tag screen (keyboard + mobile)
+- [x] Browser AI: Chrome Prompt API detection, WebLLM with a model picker, download progress and a WebGPU capability check (lazy-loaded chunk)
+- [x] Dedupe + multi-theme linking, "already learning" badges
+- [x] Theme list + theme detail (words, status filter, edit word, add word manually)
 
 **Done when** a 30-word theme can be created via each of: API key, Gemini free key, copy-paste, browser model, and the words are tagged and stored.
+
+> Verified: copy-paste (JSON with prose, broken JSON, simple lists, Polish POS/gender labels), keyboard
+> tagging, dedupe across themes and users, shared-field guard. API generation is covered by tests with
+> a mocked model; **real provider keys and in-browser model downloads still need a manual run** with
+> your own key and device.
 
 ### Phase 3: SRS + flashcards (**MVP**)
 - [ ] `ts-fsrs` integration, `core/srs/seed` + `status` (unit-tested)

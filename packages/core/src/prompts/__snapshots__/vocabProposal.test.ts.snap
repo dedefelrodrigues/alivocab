@@ -1,0 +1,53 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildVocabPrompt > matches the CSV snapshot 1`] = `
+"You are an expert Polish teacher and lexicographer. Propose 30 Polish vocabulary items for a learner whose native language is English.
+
+Theme: "At the bakery"
+Level: CEFR level A2: choose words a learner at this level should learn next.
+
+Rules:
+- Exactly 30 distinct items, ordered from most to least useful for this theme.
+- Mostly nouns, verbs and adjectives, plus a few useful adverbs or short fixed phrases. No proper nouns.
+- "lemma" is the dictionary form: nouns in nominative singular (plural only for plural-only nouns), verbs in the infinitive, adjectives in masculine singular. Phrases as commonly written.
+- "pos" is one of: noun, verb, adjective, adverb, pronoun, preposition, conjunction, numeral, particle, interjection, phrase.
+- "gender" for nouns: m, f or n (use mp / nmp only for plural-only nouns: virile / non-virile). Empty for other parts of speech.
+- "aspect" for verbs: impf (imperfective) or pf (perfective). "aspect_pair": the other verb of the pair, if one exists.
+- "translations": 1–3 short English translations, most common first.
+- "forms": key grammatical forms where relevant (nouns: gen_sg, nom_pl, ins_sg; verbs: pres_1sg, pres_2sg, pres_3pl (for perfective verbs use the future forms), past_m; adjectives: f, n, nom_pl_virile).
+- "pronunciation": IPA without slashes.
+- "examples": one natural, level-appropriate Polish sentence using the word, with its English translation, and "cloze" = the word exactly as it appears in the sentence (inflected form).
+- "notes": optional short tip (irregularity, false friend, register). Leave empty if nothing useful.
+
+Answer with ONLY a CSV code block, semicolon-separated, with this exact header row:
+\`\`\`csv
+lemma;translation;pos;gender;aspect;aspect_pair;forms;pronunciation;example;example_translation;cloze;notes
+\`\`\`
+Multiple translations are separated by "|". "forms" is written as key=value|key=value. Quote fields that contain semicolons."
+`;
+
+exports[`buildVocabPrompt > matches the Polish JSON snapshot 1`] = `
+"You are an expert Polish teacher and lexicographer. Propose 30 Polish vocabulary items for a learner whose native language is English.
+
+Theme: "At the bakery"
+Details: Buying bread and pastries
+Level: CEFR level A2: choose words a learner at this level should learn next.
+
+Rules:
+- Exactly 30 distinct items, ordered from most to least useful for this theme.
+- Mostly nouns, verbs and adjectives, plus a few useful adverbs or short fixed phrases. No proper nouns.
+- "lemma" is the dictionary form: nouns in nominative singular (plural only for plural-only nouns), verbs in the infinitive, adjectives in masculine singular. Phrases as commonly written.
+- "pos" is one of: noun, verb, adjective, adverb, pronoun, preposition, conjunction, numeral, particle, interjection, phrase.
+- "gender" for nouns: m, f or n (use mp / nmp only for plural-only nouns: virile / non-virile). Empty for other parts of speech.
+- "aspect" for verbs: impf (imperfective) or pf (perfective). "aspect_pair": the other verb of the pair, if one exists.
+- "translations": 1–3 short English translations, most common first.
+- "forms": key grammatical forms where relevant (nouns: gen_sg, nom_pl, ins_sg; verbs: pres_1sg, pres_2sg, pres_3pl (for perfective verbs use the future forms), past_m; adjectives: f, n, nom_pl_virile).
+- "pronunciation": IPA without slashes.
+- "examples": one natural, level-appropriate Polish sentence using the word, with its English translation, and "cloze" = the word exactly as it appears in the sentence (inflected form).
+- "notes": optional short tip (irregularity, false friend, register). Leave empty if nothing useful.
+
+Answer with ONLY a JSON object, no commentary, in exactly this shape:
+\`\`\`json
+{"words":[{"lemma":"","pos":"noun","gender":"m","aspect":null,"aspect_pair":null,"translations":[""],"forms":{"key":"form"},"pronunciation":"","examples":[{"text":"","translation":"","cloze":""}],"notes":""}]}
+\`\`\`"
+`;

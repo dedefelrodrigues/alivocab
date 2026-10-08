@@ -1,5 +1,6 @@
 /** Vocabulary, proposal and theme contracts shared by core (parsing), api and web. */
 import { z } from 'zod';
+import type { ImageProvider } from './enums.ts';
 import {
   ASPECTS,
   type Aspect,
@@ -41,6 +42,8 @@ export const wordSchema = z.object({
   pronunciation: nullableText(120),
   examples: z.array(exampleSchema).max(5).default([]),
   notes: nullableText(500),
+  /** English photo search phrase. '' = the word can't be pictured; null = not provided. */
+  imageQuery: z.string().trim().max(100).nullable().default(null),
 });
 
 export type VocabWord = z.output<typeof wordSchema>;
@@ -179,6 +182,47 @@ export type ThemeSummaryDto = {
   updatedAt: string;
 };
 
+// ── Pictures ────────────────────────────────────────────────────────────────
+
+export type PictureDto = {
+  id: string;
+  provider: ImageProvider;
+  /** Same-origin URLs served by the API. */
+  url: string;
+  thumbUrl: string;
+  width: number;
+  height: number;
+  title: string | null;
+  creator: string | null;
+  creatorUrl: string | null;
+  license: string | null;
+  licenseUrl: string | null;
+  sourceUrl: string | null;
+};
+
+/** A search hit shown in the picker (preview images load from the provider). */
+export type PictureSearchResult = {
+  provider: Exclude<ImageProvider, 'upload'>;
+  id: string;
+  previewUrl: string;
+  width: number;
+  height: number;
+  title: string | null;
+  creator: string | null;
+  license: string | null;
+};
+
+export const pictureSearchSchema = z.object({
+  q: z.string().trim().min(1).max(100),
+});
+
+export const pictureChoiceSchema = z.object({
+  provider: z.enum(['openverse', 'pexels']),
+  id: z.string().min(1).max(100),
+});
+
+export const pictureVisibilitySchema = z.object({ hidden: z.boolean() });
+
 export type ThemeWordDto = {
   lexemeId: string;
   lemma: string;
@@ -196,9 +240,15 @@ export type ThemeWordDto = {
   otherThemes: Array<{ id: string; name: string }>;
   /** Whether the shared dictionary fields can be edited by this user. */
   editable: boolean;
+  /** The picture this user sees (personal choice, else the shared default). */
+  image: PictureDto | null;
+  imageHidden: boolean;
+  imageQuery: string | null;
+  /** An automatic picture search is queued or running. */
+  imagePending: boolean;
 };
 
-export type ThemeDetailDto = ThemeSummaryDto & { words: ThemeWordDto[] };
+export type ThemeDetailDto = ThemeSummaryDto & { words: ThemeWordDto[]; picturesPending: number };
 
 export function emptyCounts(): StatusCounts {
   return { untagged: 0, unknown: 0, recognize: 0, known: 0 };

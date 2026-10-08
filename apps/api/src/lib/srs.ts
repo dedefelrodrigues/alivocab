@@ -27,6 +27,7 @@ import {
 } from '@alivocab/shared';
 import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { resolvePictures } from './pictures/resolve.ts';
 import { getOrCreateProfile } from './profile.ts';
 
 const {
@@ -288,6 +289,8 @@ export function hydrateCards(
     examples.set(e.lexemeId, list);
   }
 
+  const pictures = resolvePictures(db, userId, lexemeIds);
+
   const byId = new Map(
     rows.map(({ card, lexeme, own }) => {
       const preview = previewCard(toState(card), now);
@@ -310,6 +313,7 @@ export function hydrateCards(
         note: own.note,
         mnemonic: own.mnemonic,
         status: own.status,
+        image: pictures.get(lexeme.id)?.image ?? null,
         intervals: {
           again: formatInterval(preview.again, now),
           hard: formatInterval(preview.hard, now),

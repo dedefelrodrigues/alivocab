@@ -1,8 +1,16 @@
 import { schema } from '@alivocab/db';
-import { SHARED_WORD_FIELDS, statusUpdateSchema, wordUpdateSchema } from '@alivocab/shared';
+import {
+  pictureChoiceSchema,
+  pictureVisibilitySchema,
+  SHARED_WORD_FIELDS,
+  statusUpdateSchema,
+  wordUpdateSchema,
+} from '@alivocab/shared';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { MAX_UPLOAD_BYTES } from '../lib/pictures/store.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { reseedCards } from '../lib/srs.ts';
 import { validate } from '../lib/validate.ts';
@@ -13,7 +21,7 @@ import type { AppDeps, AuthedEnv } from '../types.ts';
 const { userLexemes, lexemes, lexemeTranslations } = schema;
 
 /** Per-user word state (tags, notes) plus guarded edits of shared dictionary fields. */
-export const wordRoutes = ({ db, auth }: AppDeps) => {
+export const wordRoutes = ({ db, auth, pictures }: AppDeps) => {
   const findOwn = (userId: string, lexemeId: string) => {
     const row = db
       .select()
@@ -26,6 +34,34 @@ export const wordRoutes = ({ db, auth }: AppDeps) => {
 
   return new Hono<AuthedEnv>()
     .use(requireAuth(auth))
+    .post('/:lexemeId/picture', validate('json', pictureChoiceSchema), async (c) => {
+      const user = c.get('user');
+      const lexemeId = c.req.param('lexemeId');
+      // Choosing for a word nobody else uses (or as admin) also replaces the shared default.
+      const canSetDefault = user.role === 'admin' || !isSharedWithOthers(db, user.id, lexemeId);
+      return c.json(await pictures.choose(user.id, lexemeId, c.req.valid('json'), canSetDefault));
+    })
+    .post(
+      '/:lexemeId/picture/upload',
+      bodyLimit({
+        maxSize: MAX_UPLOAD_BYTES + 64 * 1024,
+        onError: () => {
+          throw new HTTPException(413, { message: 'Pictures can be at most 8 MB' });
+        },
+      }),
+      async (c) => {
+        const body = await c.req.parseBody();
+        const file = body.file;
+        if (!(file instanceof File))
+          throw new HTTPException(400, { message: 'Attach a picture as "file"' });
+        const data = Buffer.from(await file.arrayBuffer());
+        return c.json(await pictures.upload(c.get('user').id, c.req.param('lexemeId'), data));
+      },
+    )
+    .put('/:lexemeId/picture/visibility', validate('json', pictureVisibilitySchema), (c) => {
+      pictures.setHidden(c.get('user').id, c.req.param('lexemeId'), c.req.valid('json').hidden);
+      return c.json({ hidden: c.req.valid('json').hidden });
+    })
     .patch('/:lexemeId/status', validate('json', statusUpdateSchema), (c) => {
       const userId = c.get('user').id;
       const own = findOwn(userId, c.req.param('lexemeId'));

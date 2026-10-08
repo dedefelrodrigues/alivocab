@@ -2,11 +2,13 @@ import type { createModel } from '@alivocab/ai';
 import type { Db } from '@alivocab/db';
 import type { Auth } from './auth.ts';
 import type { SecretBox } from './lib/crypto.ts';
+import type { PictureService } from './lib/pictures/service.ts';
 
 export type AppDeps = {
   db: Db;
   auth: Auth;
   secretBox: SecretBox;
+  pictures: PictureService;
   /** Allow AI base URLs on private networks (local models). */
   allowPrivateAiBaseUrls: boolean;
   /** Injected for tests; defaults to global fetch. */

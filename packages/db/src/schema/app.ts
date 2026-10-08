@@ -12,6 +12,7 @@ import {
   EXPOSURE_CONTEXTS,
   GENDERS,
   GENERATION_KINDS,
+  IMAGE_PROVIDERS,
   LESSON_KINDS,
   PARTS_OF_SPEECH,
   STATUS_SOURCES,
@@ -19,6 +20,7 @@ import {
   WORD_STATUSES,
 } from '@alivocab/shared/enums';
 import {
+  type AnySQLiteColumn,
   index,
   integer,
   primaryKey,
@@ -67,6 +69,8 @@ export const userProfiles = sqliteTable('user_profiles', {
   colorMode: text('color_mode', { enum: ['system', 'light', 'dark'] })
     .notNull()
     .default('system'),
+  /** Find a picture automatically for new words that can be pictured. */
+  autoPictures: integer('auto_pictures', { mode: 'boolean' }).notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -109,9 +113,47 @@ export const lexemes = sqliteTable(
     forms: text('forms_json', { mode: 'json' }).$type<Record<string, string>>(),
     pronunciation: text('pronunciation'),
     frequencyRank: integer('frequency_rank'),
+    /** English photo search phrase; '' = can't be pictured, null = unknown. */
+    imageQuery: text('image_query'),
+    /** Default picture shared by all learners (each can override or hide it). */
+    imageId: text('image_id').references((): AnySQLiteColumn => lexemeImages.id, {
+      onDelete: 'set null',
+    }),
+    /** Last automatic picture search, so it isn't retried on every save. */
+    imageSearchedAt: timestamp('image_searched_at'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('lexemes_lang_lemma_pos_uq').on(t.lang, t.normalizedLemma, t.pos)],
+);
+
+/** Stored pictures (resized WebP files under MEDIA_DIR) with their attribution. */
+export const lexemeImages = sqliteTable(
+  'lexeme_images',
+  {
+    id: id(),
+    lexemeId: text('lexeme_id')
+      .notNull()
+      .references((): AnySQLiteColumn => lexemes.id, { onDelete: 'cascade' }),
+    provider: text('provider', { enum: IMAGE_PROVIDERS }).notNull(),
+    providerId: text('provider_id'),
+    /** File key: `<key>.webp` (≤400px) and `<key>-thumb.webp` (96px square). */
+    fileKey: text('file_key').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    title: text('title'),
+    creator: text('creator'),
+    creatorUrl: text('creator_url'),
+    license: text('license'),
+    licenseUrl: text('license_url'),
+    sourceUrl: text('source_url'),
+    /** Uploads stay private to their owner. */
+    createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('lexeme_images_lexeme_idx').on(t.lexemeId),
+    uniqueIndex('lexeme_images_provider_uq').on(t.lexemeId, t.provider, t.providerId),
+  ],
 );
 
 export const lexemeTranslations = sqliteTable(
@@ -210,6 +252,9 @@ export const userLexemes = sqliteTable(
     incorrectCount: integer('incorrect_count').notNull().default(0),
     firstSeenAt: timestamp('first_seen_at'),
     lastSeenAt: timestamp('last_seen_at'),
+    /** Personal picture choice overriding the shared default. */
+    imageId: text('image_id').references(() => lexemeImages.id, { onDelete: 'set null' }),
+    imageHidden: integer('image_hidden', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.lexemeId] }),

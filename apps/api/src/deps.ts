@@ -2,8 +2,10 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDb, MIGRATIONS_DIR, runMigrations } from '@alivocab/db';
 import { createAuth } from './auth.ts';
-import { allowPrivateAiBaseUrls, databasePath, env } from './env.ts';
+import { allowPrivateAiBaseUrls, databasePath, env, mediaDir } from './env.ts';
 import { createSecretBox } from './lib/crypto.ts';
+import { createPictureService } from './lib/pictures/service.ts';
+import { createPictureStore } from './lib/pictures/store.ts';
 import type { AppDeps } from './types.ts';
 
 /**
@@ -28,6 +30,12 @@ export function createDepsFromEnv(): AppDeps {
       rateLimit: env.NODE_ENV === 'production',
     }),
     secretBox: createSecretBox(env.APP_ENCRYPTION_KEY),
+    pictures: createPictureService({
+      db,
+      store: createPictureStore(mediaDir),
+      pexelsKey: env.PEXELS_API_KEY,
+      log: (msg) => console.warn(`[pictures] ${msg}`),
+    }),
     allowPrivateAiBaseUrls,
   };
 }

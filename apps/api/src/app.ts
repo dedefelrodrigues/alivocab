@@ -7,6 +7,7 @@ import { credentialRoutes } from './routes/credentials.ts';
 import { generateRoutes } from './routes/generate.ts';
 import { health } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
+import { mediaRoutes, pictureRoutes } from './routes/pictures.ts';
 import { reviewRoutes } from './routes/review.ts';
 import { themeRoutes } from './routes/themes.ts';
 import { wordRoutes } from './routes/words.ts';
@@ -41,7 +42,9 @@ export function createApp(deps: AppDeps) {
     .route('/generate', generateRoutes(deps))
     .route('/themes', themeRoutes(deps))
     .route('/words', wordRoutes(deps))
-    .route('/review', reviewRoutes(deps));
+    .route('/review', reviewRoutes(deps))
+    .route('/pictures', pictureRoutes(deps))
+    .route('/media', mediaRoutes(deps));
 }
 
 export type AppType = ReturnType<typeof createApp>;

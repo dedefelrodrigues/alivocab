@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
+  ImageIcon,
+  ImagePlus,
   Layers,
   MoreHorizontal,
   Pencil,
@@ -33,6 +35,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Attribution } from '@/features/pictures/Attribution';
+import { PicturePickerDialog } from '@/features/pictures/PicturePickerDialog';
+import { WordThumb } from '@/features/pictures/WordThumb';
 import { AddWordDialog } from '@/features/themes/AddWordDialog';
 import { EditThemeDialog } from '@/features/themes/EditThemeDialog';
 import { EditWordDialog } from '@/features/themes/EditWordDialog';
@@ -52,13 +57,47 @@ const FILTERS: Filter[] = ['all', 'unknown', 'recognize', 'known', 'untagged'];
 
 function ThemePage() {
   const { themeId } = Route.useParams();
-  const { data: theme, isPending, error } = useQuery(themeQuery(themeId));
+  const {
+    data: theme,
+    isPending,
+    error,
+  } = useQuery({
+    ...themeQuery(themeId),
+    // Poll while automatic pictures are still being found.
+    refetchInterval: (q) => (q.state.data?.picturesPending ? 3000 : false),
+  });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingWord, setEditingWord] = useState<ThemeWordDto | null>(null);
+  const [pictureFor, setPictureFor] = useState<ThemeWordDto | null>(null);
+
+  const findPictures = useMutation({
+    mutationFn: () => unwrap(api.themes[':id'].pictures.$post({ param: { id: themeId } })),
+    onSuccess: (r) => {
+      toast.success(
+        r.queued
+          ? `Looking for ${r.queued} picture${r.queued === 1 ? '' : 's'}…`
+          : 'No missing pictures',
+      );
+      void queryClient.invalidateQueries(themeQuery(themeId));
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+
+  const unhide = useMutation({
+    mutationFn: (lexemeId: string) =>
+      unwrap(
+        api.words[':lexemeId'].picture.visibility.$put({
+          param: { lexemeId },
+          json: { hidden: false },
+        }),
+      ),
+    onSuccess: () => void queryClient.invalidateQueries(themeQuery(themeId)),
+    onError: (err) => toast.error(errorMessage(err)),
+  });
   const [dialog, setDialog] = useState<'add' | 'edit' | 'delete' | null>(null);
 
   const setStatus = useMutation({
@@ -151,6 +190,9 @@ function ThemePage() {
             <DropdownMenuItem onSelect={() => setDialog('edit')}>
               <Pencil /> Rename
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => findPictures.mutate()}>
+              <ImageIcon /> Find missing pictures
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setDialog('delete')} variant="destructive">
               <Trash2 /> Delete theme
             </DropdownMenuItem>
@@ -226,6 +268,8 @@ function ThemePage() {
                 onToggle={() => setExpanded(expanded === w.lexemeId ? null : w.lexemeId)}
                 onStatus={(status) => setStatus.mutate({ lexemeId: w.lexemeId, status })}
                 onEdit={() => setEditingWord(w)}
+                onPicture={() => setPictureFor(w)}
+                onUnhidePicture={() => unhide.mutate(w.lexemeId)}
                 onUnlink={() => unlink.mutate(w.lexemeId)}
               />
             ))}
@@ -234,6 +278,15 @@ function ThemePage() {
       </div>
 
       {dialog === 'add' && <AddWordDialog themeId={theme.id} onClose={() => setDialog(null)} />}
+      {pictureFor && (
+        <PicturePickerDialog
+          lexemeId={pictureFor.lexemeId}
+          lemma={pictureFor.lemma}
+          initialQuery={pictureFor.imageQuery || pictureFor.translations[0] || pictureFor.lemma}
+          hasPicture={!!pictureFor.image}
+          onClose={() => setPictureFor(null)}
+        />
+      )}
       {dialog === 'edit' && <EditThemeDialog theme={theme} onClose={() => setDialog(null)} />}
       {editingWord && (
         <EditWordDialog
@@ -271,6 +324,8 @@ function WordRow({
   onStatus,
   onEdit,
   onUnlink,
+  onPicture,
+  onUnhidePicture,
 }: {
   word: ThemeWordDto;
   lang: string;
@@ -279,6 +334,8 @@ function WordRow({
   onStatus: (s: WordStatus) => void;
   onEdit: () => void;
   onUnlink: () => void;
+  onPicture: () => void;
+  onUnhidePicture: () => void;
 }) {
   const detailsId = `word-${w.lexemeId}`;
   return (
@@ -289,16 +346,19 @@ function WordRow({
           onClick={onToggle}
           aria-expanded={expanded}
           aria-controls={detailsId}
-          className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <span className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-semibold" lang={lang}>
-              {w.lemma}
+          <WordThumb image={w.image} lemma={w.lemma} pending={w.imagePending} />
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-semibold" lang={lang}>
+                {w.lemma}
+              </span>
+              <WordMeta pos={w.pos} gender={w.gender} aspect={w.aspect} />
             </span>
-            <WordMeta pos={w.pos} gender={w.gender} aspect={w.aspect} />
-          </span>
-          <span className="block truncate text-sm text-muted-foreground">
-            {w.translations.join(', ')}
+            <span className="block truncate text-sm text-muted-foreground">
+              {w.translations.join(', ')}
+            </span>
           </span>
         </button>
         <SpeakButton text={w.lemma} lang={lang} />
@@ -306,73 +366,131 @@ function WordRow({
       </div>
 
       {expanded && (
-        <div id={detailsId} className="mt-3 space-y-3 border-t pt-3 text-sm">
-          {w.pronunciation && (
-            <p>
-              <span className="text-muted-foreground">Pronunciation:</span> /{w.pronunciation}/
-            </p>
-          )}
-          {w.aspectPair && (
-            <p>
-              <span className="text-muted-foreground">Aspect pair:</span>{' '}
-              <span lang={lang}>{w.aspectPair}</span>
-            </p>
-          )}
-          {w.forms && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
-              {Object.entries(w.forms).map(([k, v]) => (
-                <div key={k} className="contents">
-                  <dt className="text-muted-foreground">{k.replace(/_/g, ' ')}</dt>
-                  <dd lang={lang}>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {w.examples.map((ex) => (
-            <div key={ex.id} className="flex items-start gap-1">
-              <SpeakButton text={ex.text} lang={lang} />
+        <div
+          id={detailsId}
+          className="mt-3 grid gap-4 border-t pt-3 text-sm sm:grid-cols-[1fr_auto]"
+        >
+          <PictureFigure word={w} onPicture={onPicture} onUnhide={onUnhidePicture} />
+          <div className="min-w-0 space-y-3 sm:order-first">
+            {w.pronunciation && (
               <p>
-                <span lang={lang}>{ex.text}</span>
-                {ex.translation && (
-                  <span className="block text-muted-foreground">{ex.translation}</span>
-                )}
+                <span className="text-muted-foreground">Pronunciation:</span> /{w.pronunciation}/
               </p>
+            )}
+            {w.aspectPair && (
+              <p>
+                <span className="text-muted-foreground">Aspect pair:</span>{' '}
+                <span lang={lang}>{w.aspectPair}</span>
+              </p>
+            )}
+            {w.forms && (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
+                {Object.entries(w.forms).map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="text-muted-foreground">{k.replace(/_/g, ' ')}</dt>
+                    <dd lang={lang}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {w.examples.map((ex) => (
+              <div key={ex.id} className="flex items-start gap-1">
+                <SpeakButton text={ex.text} lang={lang} />
+                <p>
+                  <span lang={lang}>{ex.text}</span>
+                  {ex.translation && (
+                    <span className="block text-muted-foreground">{ex.translation}</span>
+                  )}
+                </p>
+              </div>
+            ))}
+            {(w.note || w.mnemonic) && (
+              <p className="rounded-md bg-muted/60 p-2">
+                {w.note}
+                {w.note && w.mnemonic && <br />}
+                {w.mnemonic && <span>💡 {w.mnemonic}</span>}
+              </p>
+            )}
+            {w.otherThemes.length > 0 && (
+              <p className="text-muted-foreground">
+                Also in:{' '}
+                {w.otherThemes.map((t, i) => (
+                  <span key={t.id}>
+                    {i > 0 && ', '}
+                    <Link
+                      to="/themes/$themeId"
+                      params={{ themeId: t.id }}
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {t.name}
+                    </Link>
+                  </span>
+                ))}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={onEdit}>
+                <Pencil /> Edit
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onUnlink}>
+                <Unlink /> Remove from theme
+              </Button>
             </div>
-          ))}
-          {(w.note || w.mnemonic) && (
-            <p className="rounded-md bg-muted/60 p-2">
-              {w.note}
-              {w.note && w.mnemonic && <br />}
-              {w.mnemonic && <span>💡 {w.mnemonic}</span>}
-            </p>
-          )}
-          {w.otherThemes.length > 0 && (
-            <p className="text-muted-foreground">
-              Also in:{' '}
-              {w.otherThemes.map((t, i) => (
-                <span key={t.id}>
-                  {i > 0 && ', '}
-                  <Link
-                    to="/themes/$themeId"
-                    params={{ themeId: t.id }}
-                    className="text-primary underline-offset-4 hover:underline"
-                  >
-                    {t.name}
-                  </Link>
-                </span>
-              ))}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={onEdit}>
-              <Pencil /> Edit
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onUnlink}>
-              <Unlink /> Remove from theme
-            </Button>
           </div>
         </div>
       )}
     </li>
+  );
+}
+
+/** The larger picture in the expanded row, with credit line and Change / Hide controls. */
+function PictureFigure({
+  word: w,
+  onPicture,
+  onUnhide,
+}: {
+  word: ThemeWordDto;
+  onPicture: () => void;
+  onUnhide: () => void;
+}) {
+  if (w.image) {
+    return (
+      <figure className="grid w-full gap-1.5 sm:w-44">
+        <img
+          src={w.image.url}
+          alt={w.translations[0] ?? w.lemma}
+          loading="lazy"
+          className="aspect-[4/3] w-full rounded-lg border object-cover"
+        />
+        <figcaption className="line-clamp-2 text-xs text-muted-foreground">
+          <Attribution image={w.image} />
+        </figcaption>
+        <Button size="sm" variant="outline" onClick={onPicture}>
+          <ImageIcon /> Change picture
+        </Button>
+      </figure>
+    );
+  }
+  return (
+    <div className="grid w-full content-start gap-2 sm:w-44">
+      {w.imagePending ? (
+        <div className="grid aspect-[4/3] place-items-center rounded-lg border border-dashed text-xs text-muted-foreground motion-safe:animate-pulse">
+          Finding a picture…
+        </div>
+      ) : w.imageHidden ? (
+        <Button size="sm" variant="outline" onClick={onUnhide}>
+          <ImageIcon /> Show picture again
+        </Button>
+      ) : (
+        <Button size="sm" variant="outline" onClick={onPicture}>
+          <ImagePlus /> Add a picture
+        </Button>
+      )}
+      {w.imageHidden && (
+        <Button size="sm" variant="ghost" onClick={onPicture}>
+          Choose another
+        </Button>
+      )}
+    </div>
   );
 }

@@ -147,6 +147,9 @@ export function ReviewStep({
         <strong className="text-status-known">known</strong>. On a keyboard: focus a row and press{' '}
         <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> (moves to the next), <kbd>↑</kbd>/<kbd>↓</kbd> to
         move, <kbd>x</kbd> to leave a word out, <kbd>e</kbd> to edit.
+        {me?.profile.autoPictures && (
+          <span className="mt-1 block">Pictures are added automatically after you save.</span>
+        )}
       </div>
 
       {(errors.length > 0 || warnings.length > 0) && (

@@ -81,3 +81,6 @@ export type TtsProvider = (typeof TTS_PROVIDERS)[number];
 
 export const USER_ROLES = ['user', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
+
+export const IMAGE_PROVIDERS = ['openverse', 'pexels', 'upload'] as const;
+export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];

@@ -277,3 +277,27 @@ describe('parseVocabulary: regressions from real model output', () => {
     expect(words.map((w) => w.lemma)).toEqual(['a', 'b', 'c']);
   });
 });
+
+describe('parseVocabulary: picture search phrases', () => {
+  it('reads image_query, keeps an explicit null as "not picturable", absent as unknown', () => {
+    const raw = JSON.stringify({
+      words: [
+        { lemma: 'chleb', pos: 'noun', translations: ['bread'], image_query: 'loaf of bread' },
+        { lemma: 'jednak', pos: 'conjunction', translations: ['however'], image_query: null },
+        { lemma: 'mąka', pos: 'noun', translations: ['flour'] },
+        {
+          lemma: 'ser',
+          pos: 'noun',
+          translations: ['cheese'],
+          image_query: '<English photo search phrase, or null>',
+        },
+      ],
+    });
+    expect(parse(raw).words.map((w) => [w.lemma, w.imageQuery])).toEqual([
+      ['chleb', 'loaf of bread'],
+      ['jednak', ''],
+      ['mąka', null],
+      ['ser', ''],
+    ]);
+  });
+});

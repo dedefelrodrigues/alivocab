@@ -1,7 +1,7 @@
 import { type CefrLevel, languageName, type ProposalFormat } from '@alivocab/shared';
 
 /** Bump when the template changes in a way that affects output (stored with each generation). */
-export const VOCAB_PROMPT_VERSION = 'vocab-proposal@2';
+export const VOCAB_PROMPT_VERSION = 'vocab-proposal@3';
 
 export type VocabPromptInput = {
   targetLang: string;
@@ -36,7 +36,7 @@ const DEFAULT_FORM_GUIDE = 'nouns: plural; verbs: 3rd person singular present an
 const ASPECT_LANGS = new Set(['pl', 'uk', 'cs', 'ru', 'sk']);
 
 const CSV_HEADER =
-  'lemma;translation;pos;gender;aspect;aspect_pair;forms;pronunciation;example;example_translation;cloze;notes';
+  'lemma;translation;pos;gender;aspect;aspect_pair;forms;pronunciation;example;example_translation;cloze;notes;image_query';
 
 /**
  * Builds the vocabulary-proposal prompt. The same text is used for API providers, in-browser
@@ -78,6 +78,7 @@ export function buildVocabPrompt(input: VocabPromptInput): string {
     '- "pronunciation": IPA without slashes.',
     `- "examples": one natural, level-appropriate ${target} sentence using the word, with its ${native} translation, and "cloze" = the word exactly as it appears in the sentence (inflected form).`,
     '- "notes": optional short tip (irregularity, false friend, register). Leave empty if nothing useful.',
+    '- "image_query": a short English phrase to find a photo that clearly shows the word (e.g. "loaf of bread", "woman running"). Use null if it can\'t be pictured (abstract or grammar words).',
   );
   if (input.avoid?.length) {
     lines.push(`- Do NOT include any of these (already known): ${input.avoid.join(', ')}.`);
@@ -106,6 +107,7 @@ export function buildVocabPrompt(input: VocabPromptInput): string {
               },
             ],
             notes: '',
+            image_query: '<English photo search phrase, or null>',
           },
         ],
       }),

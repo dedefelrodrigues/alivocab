@@ -26,6 +26,7 @@ type LearningFields = Pick<
   | 'dailyNewLimit'
   | 'dailyReviewLimit'
   | 'defaultAiSource'
+  | 'autoPictures'
 >;
 
 function pick(p: ProfileDto): LearningFields {
@@ -36,6 +37,7 @@ function pick(p: ProfileDto): LearningFields {
     dailyNewLimit: p.dailyNewLimit,
     dailyReviewLimit: p.dailyReviewLimit,
     defaultAiSource: p.defaultAiSource,
+    autoPictures: p.autoPictures,
   };
 }
 
@@ -138,6 +140,22 @@ export function LearningSection() {
             </SelectContent>
           </Select>
         </FormField>
+
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.autoPictures}
+            onChange={(e) => set('autoPictures', e.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span>
+            <span className="font-medium">Add pictures automatically</span>
+            <span className="block text-muted-foreground">
+              New words that can be pictured get a free photo (Openverse / Pexels). You can change
+              or hide any of them later.
+            </span>
+          </span>
+        </label>
 
         <div className="flex justify-end gap-2">
           <Button

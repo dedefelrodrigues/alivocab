@@ -21,6 +21,8 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string({ error: 'is required' }).min(32, 'must be at least 32 chars'),
   BETTER_AUTH_URL: z.url().default('http://localhost:5180'),
   ALLOW_PRIVATE_AI_BASE_URLS: z.stringbool().optional(),
+  MEDIA_DIR: z.string().default('./data/media'),
+  PEXELS_API_KEY: z.string().min(10).optional(),
   ADMIN_EMAIL: z.email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
 });
@@ -44,6 +46,10 @@ export const databasePath =
   env.DATABASE_URL === ':memory:' || isAbsolute(env.DATABASE_URL)
     ? env.DATABASE_URL
     : resolve(REPO_ROOT, env.DATABASE_URL);
+
+export const mediaDir = isAbsolute(env.MEDIA_DIR)
+  ? env.MEDIA_DIR
+  : resolve(REPO_ROOT, env.MEDIA_DIR);
 
 export const allowPrivateAiBaseUrls =
   env.ALLOW_PRIVATE_AI_BASE_URLS ?? env.NODE_ENV !== 'production';

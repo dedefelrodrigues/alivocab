@@ -118,6 +118,7 @@ const POSITIONAL: Field[] = [
   'exampleTranslation',
   'cloze',
   'notes',
+  'imageQuery',
 ];
 
 function rowsToRecords(rows: string[][], ctx: Ctx, issues: ImportIssue[]): RawRecord[] {

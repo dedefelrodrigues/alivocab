@@ -8,6 +8,7 @@ import {
   type PartOfSpeech,
   type WordStatus,
 } from './enums.ts';
+import type { PictureDto } from './vocab.ts';
 
 export const REVIEW_RATINGS = ['again', 'hard', 'good', 'easy'] as const;
 export type ReviewRatingName = (typeof REVIEW_RATINGS)[number];
@@ -52,6 +53,7 @@ export type ReviewCardDto = {
   note: string | null;
   mnemonic: string | null;
   status: WordStatus;
+  image: PictureDto | null;
   /** Next interval per rating, e.g. { again: "1m", good: "3d" }. */
   intervals: Record<ReviewRatingName, string>;
 };

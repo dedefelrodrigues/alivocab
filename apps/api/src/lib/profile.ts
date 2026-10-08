@@ -27,5 +27,6 @@ export function toProfileDto(row: typeof schema.userProfiles.$inferSelect): Prof
     dailyReviewLimit: row.dailyReviewLimit,
     colorPalette: row.colorPalette,
     colorMode: row.colorMode,
+    autoPictures: row.autoPictures,
   };
 }

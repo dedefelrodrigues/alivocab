@@ -6,6 +6,20 @@ import { SpeakButton } from '@/features/themes/SpeakButton';
 import { WordMeta } from '@/features/themes/WordMeta';
 import { cn } from '@/lib/utils';
 
+function CardPicture({ card, size }: { card: ReviewCardDto; size: 'sm' | 'lg' }) {
+  if (!card.image) return null;
+  return (
+    <img
+      src={card.image.url}
+      alt=""
+      className={cn(
+        'mx-auto w-auto rounded-lg border object-cover',
+        size === 'lg' ? 'max-h-40 sm:max-h-48' : 'max-h-28 sm:max-h-32',
+      )}
+    />
+  );
+}
+
 /** The example sentence with the target word blanked out (a recall hint). */
 function clozeHint(card: ReviewCardDto): string | null {
   const ex = card.examples.find((e) => e.cloze && e.text.includes(e.cloze));
@@ -35,6 +49,7 @@ function Front({ card }: { card: ReviewCardDto }) {
       <p className="text-xs uppercase tracking-wide text-muted-foreground">
         Say it in the language you learn
       </p>
+      <CardPicture card={card} size="lg" />
       <p className="text-3xl font-semibold break-words sm:text-4xl">
         {card.translations.join(', ')}
       </p>
@@ -62,6 +77,7 @@ function Front({ card }: { card: ReviewCardDto }) {
 function Back({ card }: { card: ReviewCardDto }) {
   return (
     <div className="grid gap-4 text-center">
+      <CardPicture card={card} size="sm" />
       <div className="grid place-items-center gap-1">
         <div className="flex items-center gap-1">
           <p className="text-4xl font-semibold break-words sm:text-5xl" lang={card.lang}>

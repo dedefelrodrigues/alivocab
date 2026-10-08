@@ -184,6 +184,8 @@ function normalizeRecord(
     pronunciation: str(data.pronunciation).replace(/^[/[]|[/\]]$/g, '') || null,
     examples: toExamples(data, lemma, opts.lang),
     notes: str(data.notes) || null,
+    // Present but empty means "can't be pictured"; absent means unknown.
+    imageQuery: 'imageQuery' in data ? str(data.imageQuery).slice(0, 100) : null,
   };
 
   const checked = wordSchema.safeParse(word);
@@ -212,6 +214,7 @@ function merge(into: VocabWord, from: VocabWord): void {
   into.forms ??= from.forms;
   into.pronunciation ??= from.pronunciation;
   into.notes ??= from.notes;
+  into.imageQuery ??= from.imageQuery;
 }
 
 export function dedupeKey(word: Pick<VocabWord, 'lemma' | 'pos'>, lang: string): string {

@@ -44,6 +44,18 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         // The WebLLM runtime (~6 MB) is only downloaded when an on-device model is used.
         globIgnores: ['**/lib-*.js'],
+        // Word pictures never change (random file names), so cache them for offline use.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/media/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'word-pictures',
+              expiration: { maxEntries: 3000, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
     }),
   ],

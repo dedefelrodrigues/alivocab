@@ -18,6 +18,7 @@ import {
 } from '@alivocab/shared';
 import { and, asc, eq, inArray, max, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { resolvePictures } from './pictures/resolve.ts';
 import { createCards, reseedCards } from './srs.ts';
 
 const {
@@ -157,6 +158,7 @@ export function themeWords(
   userId: string,
   theme: ThemeRow,
   isAdmin: boolean,
+  isPicturePending: (lexemeId: string) => boolean = () => false,
 ): ThemeWordDto[] {
   const rows = db
     .select({ lexeme: lexemes, userLexeme: userLexemes })
@@ -213,6 +215,8 @@ export function themeWords(
     ]);
   }
 
+  const pictures = resolvePictures(db, userId, ids);
+
   const shared = new Set(
     db
       .select({ lexemeId: userLexemes.lexemeId })
@@ -238,6 +242,10 @@ export function themeWords(
     mnemonic: u?.mnemonic ?? null,
     otherThemes: otherThemes.get(l.id) ?? [],
     editable: isAdmin || !shared.has(l.id),
+    image: pictures.get(l.id)?.image ?? null,
+    imageHidden: pictures.get(l.id)?.hidden ?? false,
+    imageQuery: l.imageQuery,
+    imagePending: isPicturePending(l.id),
   }));
 }
 
@@ -307,10 +315,14 @@ export type SaveOptions = {
  * Upserts words into the shared dictionary (filling gaps, never overwriting others' data),
  * links them to the theme and records the user's tag. Runs in one transaction.
  */
-export function saveWords(db: Db, opts: SaveOptions): { added: number; linked: number } {
+export function saveWords(
+  db: Db,
+  opts: SaveOptions,
+): { added: number; linked: number; lexemeIds: string[] } {
   const now = new Date();
   let added = 0;
   let linked = 0;
+  const lexemeIds: string[] = [];
 
   db.transaction((tx) => {
     const start =
@@ -336,6 +348,7 @@ export function saveWords(db: Db, opts: SaveOptions): { added: number; linked: n
             aspectPairLemma: word.aspectPair ?? null,
             forms: word.forms ?? null,
             pronunciation: word.pronunciation ?? null,
+            imageQuery: word.imageQuery ?? null,
           })
           .returning()
           .get();
@@ -351,12 +364,16 @@ export function saveWords(db: Db, opts: SaveOptions): { added: number; linked: n
           ...(lexeme.pronunciation === null && word.pronunciation
             ? { pronunciation: word.pronunciation }
             : {}),
+          ...(lexeme.imageQuery === null && word.imageQuery != null
+            ? { imageQuery: word.imageQuery }
+            : {}),
         };
         if (Object.keys(fill).length) {
           tx.update(lexemes).set(fill).where(eq(lexemes.id, lexeme.id)).run();
         }
       }
       const lexemeId = lexeme.id;
+      lexemeIds.push(lexemeId);
 
       word.translations.forEach((text, sort) => {
         tx.insert(lexemeTranslations)
@@ -435,5 +452,5 @@ export function saveWords(db: Db, opts: SaveOptions): { added: number; linked: n
     tx.update(themes).set({ updatedAt: now }).where(eq(themes.id, opts.themeId)).run();
   });
 
-  return { added, linked };
+  return { added, linked, lexemeIds };
 }

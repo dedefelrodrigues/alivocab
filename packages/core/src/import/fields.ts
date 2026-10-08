@@ -17,7 +17,8 @@ export type Field =
   | 'examples'
   | 'exampleTranslation'
   | 'cloze'
-  | 'notes';
+  | 'notes'
+  | 'imageQuery';
 
 /** Canonical key form: lowercase ASCII-ish letters/digits only. */
 export function keyOf(name: string): string {
@@ -82,6 +83,16 @@ const FIELD_ALIASES: Record<Field, string[]> = {
   ],
   cloze: ['cloze', 'clozetarget', 'forminsentence', 'clozeword'],
   notes: ['notes', 'note', 'tip', 'tips', 'comment', 'comments', 'usage', 'remarks', 'uwagi'],
+  imageQuery: [
+    'imagequery',
+    'image',
+    'picture',
+    'photo',
+    'photoquery',
+    'imagesearch',
+    'picturequery',
+    'imagesearchquery',
+  ],
 };
 
 /** Maps a column header or JSON key to a field, using language names as extra aliases. */

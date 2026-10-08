@@ -1,17 +1,31 @@
 import { randomBytes } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTestDb, schema } from '@alivocab/db';
 import { eq } from 'drizzle-orm';
 import { vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { createAuth, INVITE_HEADER } from '../auth.ts';
 import { createSecretBox } from '../lib/crypto.ts';
+import { createPictureService } from '../lib/pictures/service.ts';
+import { createPictureStore } from '../lib/pictures/store.ts';
 import type { AppDeps } from '../types.ts';
 
 export const BASE_URL = 'http://localhost:5180';
 
 export function createTestApp(overrides: Partial<AppDeps> = {}) {
   const db = createTestDb();
+  const fetchFn =
+    overrides.fetchFn ??
+    vi.fn<typeof fetch>(async () => Response.json({ data: [{ id: 'model-a' }] }));
   const deps: AppDeps = {
+    pictures: createPictureService({
+      db,
+      store: createPictureStore(mkdtempSync(join(tmpdir(), 'alivocab-media-'))),
+      fetchFn,
+      openverseIntervalMs: 0,
+    }),
     db,
     auth: createAuth({
       db,
@@ -21,7 +35,7 @@ export function createTestApp(overrides: Partial<AppDeps> = {}) {
     }),
     secretBox: createSecretBox(randomBytes(32).toString('base64')),
     allowPrivateAiBaseUrls: false,
-    fetchFn: vi.fn<typeof fetch>(async () => Response.json({ data: [{ id: 'model-a' }] })),
+    fetchFn,
     log: false,
     ...overrides,
   };
@@ -54,6 +68,19 @@ export function createTestApp(overrides: Partial<AppDeps> = {}) {
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
 
+  /** Raw request (e.g. multipart) with the session cookie and same-origin header. */
+  const raw = (path: string, init: RequestInit & { cookie?: string } = {}) => {
+    const { cookie, headers, ...rest } = init;
+    return app.request(path, {
+      ...rest,
+      headers: {
+        origin: BASE_URL,
+        ...(cookie ? { cookie } : {}),
+        ...(headers as Record<string, string>),
+      },
+    });
+  };
+
   const signUp = async (email: string, inviteCode?: string) => {
     const res = await call('/api/auth/sign-up/email', {
       method: 'POST',
@@ -80,5 +107,5 @@ export function createTestApp(overrides: Partial<AppDeps> = {}) {
     return cookie;
   };
 
-  return { app, db, deps, call, signUp, addInvite, createUser };
+  return { app, db, deps, call, raw, signUp, addInvite, createUser };
 }

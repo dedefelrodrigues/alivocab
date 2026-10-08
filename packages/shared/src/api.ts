@@ -23,6 +23,7 @@ export const profileUpdateSchema = z
       .string()
       .refine((v) => v === 'auto' || getPalette(v) !== undefined, 'Unknown palette'),
     colorMode: z.enum(COLOR_MODES),
+    autoPictures: z.boolean(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, 'Nothing to update');
@@ -40,6 +41,7 @@ export type ProfileDto = {
   dailyReviewLimit: number;
   colorPalette: string;
   colorMode: (typeof COLOR_MODES)[number];
+  autoPictures: boolean;
 };
 
 export type MeDto = {

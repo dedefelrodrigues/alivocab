@@ -31,7 +31,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
 | D21 | Shared-word edits | Dictionary fields (gender, forms, translations, IPA) are editable only while no other user has the word (or by an admin). Notes/mnemonics are always private and editable |
 | D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
-| D23 | Pictures | Optional picture per word from free photo search (Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
+| D23 | Pictures | Optional picture per word from free photo search (Wikimedia Commons and Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -188,8 +188,11 @@ the reason, and the valid rows still import.
 - Rate limit AI endpoints per user (simple token bucket in memory, later SQLite).
 
 ### 4.4 Pictures (`apps/api/src/lib/pictures`)
-- **Sources**: Openverse (CC-licensed, no key; anonymous limit about 20/min and 200/day per server,
-  uncached queries can take ~10 s) and Pexels when `PEXELS_API_KEY` is set. Uploads (any image sharp can read,
+- **Sources**, best first: Pexels when `PEXELS_API_KEY` is set, Wikimedia Commons (no key, about
+  1 s, bitmap files only, the 500 px thumbnail is downloaded), then Openverse (no key, but often
+  10–25 s for a new query and limited to about 20/min and 200/day per server). Auto-pick asks them
+  in that order and stops at the first usable hit. The picker asks all of them in parallel, waits at
+  most 10 s for each and shows whatever came back. Uploads (any image sharp can read,
   ≤ 8 MB) are private to the uploader and never become the shared default.
 - **Search phrase**: the vocab prompt (`vocab-proposal@3`) asks for an English `image_query`
   per word, or `none` for words that can't be pictured (adjectives like *dojrzały*, abstract verbs).
@@ -197,7 +200,8 @@ the reason, and the valid rows still import.
 - **Auto-pick**: `saveWords()` returns the lexeme ids, and the theme routes queue them
   (`pictures.enqueue`) when `user_profiles.auto_pictures` is on. A small background queue in the API
   process searches, downloads the top hit and stores it. A word is marked `image_searched_at` only
-  when a provider actually answered, so outages and rate limits are retried later ("Find missing
+  when every provider answered. After a timeout, limit or outage it is retried once at the end of the
+  queue (Openverse usually has the query cached by then), and otherwise left for later ("Find missing
   pictures" in the theme menu forces a retry). The theme page polls while `picturesPending > 0`.
 - **Storage**: downloads go through `assertPublicUrl` with manual redirects (SSRF guard), are resized
   with sharp to a 480 px WebP + a 96 px thumbnail under `MEDIA_DIR`, and are served by

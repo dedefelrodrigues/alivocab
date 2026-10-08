@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
 
-/** Search free photos (Openverse / Pexels), upload your own, or hide the picture. */
+/** Search free photos (Wikimedia Commons, Openverse, Pexels), upload your own, or hide it. */
 export function PicturePickerDialog({
   lexemeId,
   lemma,
@@ -178,8 +178,8 @@ export function PicturePickerDialog({
             Photos provided by{' '}
             <a href="https://www.pexels.com" target="_blank" rel="noreferrer" className="underline">
               Pexels
-            </a>{' '}
-            and Openverse.
+            </a>
+            , Wikimedia Commons and Openverse.
           </p>
         )}
 

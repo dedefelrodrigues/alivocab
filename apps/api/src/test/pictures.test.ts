@@ -14,11 +14,43 @@ const IMG = (name: string) => `https://93.184.215.14/${name}.png`;
 
 type Route = { calls: string[]; fetchFn: typeof fetch };
 
-/** Fake Openverse + image host. `results` maps a query to the image ids it returns. */
+/**
+ * Fake Openverse + Wikimedia Commons + image host. `results` maps a query to the Openverse ids
+ * it returns, `opts.commons` maps a query to Commons page ids. Commons finds nothing otherwise.
+ */
 function fakeWeb(
   results: Record<string, string[]>,
-  opts: { privateUrl?: boolean; limited?: boolean } = {},
+  opts: {
+    privateUrl?: boolean;
+    limited?: boolean;
+    commons?: Record<string, number[]>;
+    /** Openverse searches time out this many times before answering. */
+    openverseTimeouts?: number;
+  } = {},
 ): Route {
+  let timeouts = opts.openverseTimeouts ?? 0;
+  const page = (pageid: number) => ({
+    pageid,
+    title: `File:Commons photo ${pageid}.jpg`,
+    imageinfo: [
+      {
+        url: IMG(`commons-${pageid}-full`),
+        thumburl: IMG(`commons-${pageid}`),
+        width: 1600,
+        height: 1200,
+        mime: 'image/jpeg',
+        descriptionurl: `https://commons.wikimedia.org/wiki/File:Commons_photo_${pageid}.jpg`,
+        extmetadata: {
+          Artist: {
+            value:
+              '<a href="//commons.wikimedia.org/wiki/User:Jan" title="User:Jan">Jan K&amp;owalski</a>',
+          },
+          LicenseShortName: { value: 'CC BY-SA 4.0' },
+          LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0' },
+        },
+      },
+    ],
+  });
   const calls: string[] = [];
   const hit = (id: string) => ({
     id,
@@ -37,8 +69,21 @@ function fakeWeb(
   const fetchFn = vi.fn<typeof fetch>(async (input) => {
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
+    if (url.startsWith('https://commons.wikimedia.org/w/api.php?')) {
+      const params = new URL(url).searchParams;
+      const ids = params.has('pageids')
+        ? [Number(params.get('pageids'))]
+        : (opts.commons?.[(params.get('gsrsearch') ?? '').replace(/ filetype:bitmap$/, '')] ?? []);
+      return Response.json({ query: { pages: ids.map(page) } });
+    }
     if (url.startsWith('https://api.openverse.org/v1/images/?')) {
       if (opts.limited) return new Response('slow down', { status: 429 });
+      if (timeouts > 0) {
+        timeouts--;
+        throw Object.assign(new Error('The operation was aborted due to timeout'), {
+          name: 'TimeoutError',
+        });
+      }
       const q = new URL(url).searchParams.get('q') ?? '';
       return Response.json({ results: (results[q] ?? []).map(hit) });
     }
@@ -267,7 +312,80 @@ describe('choosing, uploading and hiding pictures', () => {
   });
 });
 
+describe('Wikimedia Commons', () => {
+  it('is tried first, and Openverse is not asked when Commons has a picture', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] }, { commons: { bread: [42] } });
+    const { detail } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect((await detail()).words[0]?.image).toMatchObject({
+      provider: 'wikimedia',
+      title: 'Commons photo 42',
+      creator: 'Jan K&owalski',
+      creatorUrl: 'https://commons.wikimedia.org/wiki/User:Jan',
+      license: 'CC BY-SA 4.0',
+      sourceUrl: 'https://commons.wikimedia.org/wiki/File:Commons_photo_42.jpg',
+    });
+    expect(web.calls.some((u) => u.includes('openverse'))).toBe(false);
+    // The 500 px thumbnail is downloaded, not the full-size original.
+    expect(web.calls).toContain(IMG('commons-42'));
+    expect(web.calls).not.toContain(IMG('commons-42-full'));
+  });
+
+  it('falls back to Openverse when Commons finds nothing', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] });
+    const { detail } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect((await detail()).words[0]?.image?.provider).toBe('openverse');
+    const searched = web.calls.filter((u) => u.includes('commons') || u.includes('/v1/images/?'));
+    expect(searched[0]).toContain('commons.wikimedia.org');
+  });
+
+  it('merges providers in the picker and lets the learner choose a Commons photo', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] }, { commons: { bread: [7, 8] } });
+    const { call, cookie, detail } = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const search = await json<{ results: Array<{ id: string; provider: string }> }>(
+      call('/api/pictures/search?q=bread', { cookie }),
+    );
+    expect(search.results.map((r) => `${r.provider}:${r.id}`)).toEqual([
+      'wikimedia:7',
+      'wikimedia:8',
+      'openverse:ov-1',
+    ]);
+    const lexemeId = (await detail()).words[0]?.lexemeId;
+    const res = await call(`/api/words/${lexemeId}/picture`, {
+      method: 'POST',
+      cookie,
+      body: { provider: 'wikimedia', id: '8' },
+    });
+    expect(res.status).toBe(200);
+    expect((await detail()).words[0]?.image?.title).toBe('Commons photo 8');
+  });
+
+  it('still shows Commons results when Openverse times out in the picker', async () => {
+    const web = fakeWeb({}, { commons: { bread: [7] }, openverseTimeouts: 1 });
+    const { call, cookie } = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const res = await call('/api/pictures/search?q=bread', { cookie });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { results: unknown[] }).results).toHaveLength(1);
+  });
+});
+
 describe('automatic pictures: failures', () => {
+  it('retries a word once when Openverse timed out', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] }, { openverseTimeouts: 1 });
+    const { detail } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect((await detail()).words[0]?.image?.provider).toBe('openverse');
+    expect(web.calls.filter((u) => u.includes('/v1/images/?'))).toHaveLength(2);
+  });
+
+  it('gives up after one retry and leaves the word unsearched', async () => {
+    const web = fakeWeb({ bread: ['ov-1'] }, { openverseTimeouts: 5 });
+    const { db } = await setupWith(web, [word('chleb', { imageQuery: 'bread' })]);
+    expect(web.calls.filter((u) => u.includes('/v1/images/?'))).toHaveLength(2);
+    expect(db.select().from(schema.lexemes).get()).toMatchObject({
+      imageId: null,
+      imageSearchedAt: null,
+    });
+  });
+
   it('does not mark a word as searched when the provider times out', async () => {
     const fetchFn = vi.fn<typeof fetch>(async () => {
       throw Object.assign(new Error('The operation was aborted due to timeout'), {

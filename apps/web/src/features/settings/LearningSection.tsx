@@ -151,8 +151,8 @@ export function LearningSection() {
           <span>
             <span className="font-medium">Add pictures automatically</span>
             <span className="block text-muted-foreground">
-              New words that can be pictured get a free photo (Openverse / Pexels). You can change
-              or hide any of them later.
+              New words that can be pictured get a free photo (Wikimedia Commons, Openverse,
+              Pexels). You can change or hide any of them later.
             </span>
           </span>
         </label>

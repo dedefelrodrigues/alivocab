@@ -8,6 +8,7 @@ import {
   type Gender,
   PARTS_OF_SPEECH,
   type PartOfSpeech,
+  SEARCH_PROVIDERS,
   WORD_STATUSES,
   type WordStatus,
 } from './enums.ts';
@@ -217,7 +218,7 @@ export const pictureSearchSchema = z.object({
 });
 
 export const pictureChoiceSchema = z.object({
-  provider: z.enum(['openverse', 'pexels']),
+  provider: z.enum(SEARCH_PROVIDERS),
   id: z.string().min(1).max(100),
 });
 

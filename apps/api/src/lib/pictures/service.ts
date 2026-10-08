@@ -4,10 +4,10 @@
  */
 import type { Db } from '@alivocab/db';
 import { schema } from '@alivocab/db';
-import type { PictureDto, PictureSearchResult } from '@alivocab/shared';
+import type { PictureDto, PictureSearchResult, SearchProvider } from '@alivocab/shared';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { openverse, type ProviderHit, ProviderLimitError, pexels } from './providers.ts';
+import { openverse, type ProviderHit, ProviderLimitError, pexels, wikimedia } from './providers.ts';
 import { downloadImage, type PictureStore } from './store.ts';
 
 const { lexemes, lexemeImages, lexemeTranslations, userLexemes } = schema;
@@ -33,6 +33,13 @@ export function toPictureDto(row: ImageRow): PictureDto {
 /** Parts of speech that are usually worth picturing when no explicit query is known. */
 const PICTURABLE_BY_DEFAULT = new Set(['noun']);
 
+/**
+ * How long the picker waits for each provider. Openverse is often slower than this for a new
+ * query; the picker then shows what the faster providers found. Auto-pick runs in the
+ * background and waits longer.
+ */
+const PICKER_TIMEOUT_MS = 10_000;
+
 export type PictureServiceOptions = {
   db: Db;
   store: PictureStore;
@@ -55,7 +62,7 @@ export function createPictureService(opts: PictureServiceOptions) {
 
   const usable = (name: string) => (blockedUntil.get(name) ?? 0) <= Date.now();
 
-  async function callProvider<T>(name: 'openverse' | 'pexels', fn: () => Promise<T>): Promise<T> {
+  async function callProvider<T>(name: SearchProvider, fn: () => Promise<T>): Promise<T> {
     if (name === 'openverse') {
       const wait = nextOpenverseAt - Date.now();
       nextOpenverseAt = Math.max(Date.now(), nextOpenverseAt) + interval;
@@ -69,12 +76,13 @@ export function createPictureService(opts: PictureServiceOptions) {
     }
   }
 
-  function providerOrder(): Array<'pexels' | 'openverse'> {
-    const order: Array<'pexels' | 'openverse'> = [];
-    if (opts.pexelsKey && usable('pexels')) order.push('pexels');
-    if (usable('openverse')) order.push('openverse');
-    return order;
-  }
+  /** Configured providers, best first: Pexels (with a key), Wikimedia (fast), Openverse (slow). */
+  const configured: SearchProvider[] = [
+    ...(opts.pexelsKey ? (['pexels'] as const) : []),
+    'wikimedia',
+    'openverse',
+  ];
+  const providerOrder = () => configured.filter(usable);
 
   /**
    * Recent search hits, so choosing one doesn't need another (slow, rate-limited) provider
@@ -96,17 +104,22 @@ export function createPictureService(opts: PictureServiceOptions) {
   };
 
   /** Always asks for 12, so the picker and auto-pick share Openverse's cache for a query. */
-  async function searchProvider(name: 'pexels' | 'openverse', q: string): Promise<ProviderHit[]> {
-    const hits = await callProvider(name, () =>
-      name === 'pexels'
-        ? pexels.search(fetchFn, opts.pexelsKey ?? '', q, 12)
-        : openverse.search(fetchFn, q, 12),
-    );
+  async function searchProvider(
+    name: SearchProvider,
+    q: string,
+    timeoutMs?: number,
+  ): Promise<ProviderHit[]> {
+    const options = { size: 12, timeoutMs };
+    const hits = await callProvider(name, () => {
+      if (name === 'pexels') return pexels.search(fetchFn, opts.pexelsKey ?? '', q, options);
+      if (name === 'wikimedia') return wikimedia.search(fetchFn, q, options);
+      return openverse.search(fetchFn, q, options);
+    });
     remember(hits);
     return hits;
   }
 
-  /** Picker search: results from every available provider (Pexels first when configured). */
+  /** Picker search: all available providers in parallel, results in provider order. */
   async function search(q: string): Promise<PictureSearchResult[]> {
     const order = providerOrder();
     if (!order.length) {
@@ -114,21 +127,23 @@ export function createPictureService(opts: PictureServiceOptions) {
         message: 'Picture search limit reached. Try again in an hour.',
       });
     }
+    const settled = await Promise.allSettled(
+      order.map((name) => searchProvider(name, q, PICKER_TIMEOUT_MS)),
+    );
     const results: PictureSearchResult[] = [];
     let lastError: unknown = null;
-    for (const name of order) {
-      try {
-        const hits = await searchProvider(name, q);
+    settled.forEach((outcome, i) => {
+      if (outcome.status === 'fulfilled') {
         results.push(
-          ...hits.map(
+          ...outcome.value.map(
             ({ downloadUrl: _d, creatorUrl: _c, licenseUrl: _l, sourceUrl: _s, ...hit }) => hit,
           ),
         );
-      } catch (err) {
-        lastError = err;
-        log(`picture search via ${name} failed: ${(err as Error).message}`);
+      } else {
+        lastError = outcome.reason;
+        log(`picture search via ${order[i]} failed: ${(outcome.reason as Error).message}`);
       }
-    }
+    });
     if (!results.length && lastError) {
       throw new HTTPException(502, { message: (lastError as Error).message });
     }
@@ -209,7 +224,7 @@ export function createPictureService(opts: PictureServiceOptions) {
   async function choose(
     userId: string,
     lexemeId: string,
-    choice: { provider: 'openverse' | 'pexels'; id: string },
+    choice: { provider: SearchProvider; id: string },
     canSetDefault: boolean,
   ): Promise<PictureDto> {
     ownLexeme(userId, lexemeId);
@@ -218,11 +233,12 @@ export function createPictureService(opts: PictureServiceOptions) {
     }
     let hit: ProviderHit | null = recalled(choice.provider, choice.id);
     try {
-      hit ??= await callProvider(choice.provider, () =>
-        choice.provider === 'pexels'
-          ? pexels.get(fetchFn, opts.pexelsKey ?? '', choice.id)
-          : openverse.get(fetchFn, choice.id),
-      );
+      hit ??= await callProvider(choice.provider, () => {
+        if (choice.provider === 'pexels')
+          return pexels.get(fetchFn, opts.pexelsKey ?? '', choice.id);
+        if (choice.provider === 'wikimedia') return wikimedia.get(fetchFn, choice.id);
+        return openverse.get(fetchFn, choice.id);
+      });
     } catch (err) {
       throw new HTTPException(502, { message: (err as Error).message });
     }
@@ -277,6 +293,8 @@ export function createPictureService(opts: PictureServiceOptions) {
 
   const queue: string[] = [];
   const queued = new Set<string>();
+  /** Words already retried once in this run, after a provider failed. */
+  const retried = new Set<string>();
   let running: Promise<void> | null = null;
 
   /** Search phrase for a word: the AI's phrase, else an English (or any) translation for nouns. */
@@ -292,7 +310,8 @@ export function createPictureService(opts: PictureServiceOptions) {
     return (translations.find((t) => t.lang === 'en') ?? translations[0])?.text ?? null;
   }
 
-  async function autoPickOne(lexemeId: string): Promise<void> {
+  /** Returns `'retry'` when a provider failed or was skipped, so the word was not fully searched. */
+  async function autoPickOne(lexemeId: string): Promise<'retry' | undefined> {
     const lexeme = db.select().from(lexemes).where(eq(lexemes.id, lexemeId)).get();
     if (!lexeme || lexeme.imageId) return;
     const query = queryFor(lexeme);
@@ -300,15 +319,16 @@ export function createPictureService(opts: PictureServiceOptions) {
       db.update(lexemes).set({ imageSearchedAt: new Date() }).where(eq(lexemes.id, lexemeId)).run();
     if (!query) return void markSearched();
 
-    // Only a provider that actually answered counts as "searched"; timeouts, limits and
-    // outages leave the word unsearched so it can be retried.
-    let answered = false;
-    for (const name of providerOrder()) {
+    // The word only counts as "searched" when every provider answered; timeouts, limits and
+    // outages leave it unsearched so it can be retried.
+    const order = providerOrder();
+    let incomplete = order.length < configured.length;
+    for (const name of order) {
       let hits: ProviderHit[];
       try {
         hits = await searchProvider(name, query);
-        answered = true;
       } catch (err) {
+        incomplete = true;
         log(`auto picture for ${lexeme.lemma} via ${name} failed: ${(err as Error).message}`);
         continue;
       }
@@ -332,17 +352,26 @@ export function createPictureService(opts: PictureServiceOptions) {
         log(`storing picture for ${lexeme.lemma} failed: ${(err as Error).message}`);
       }
     }
-    if (answered) markSearched();
+    if (incomplete) return 'retry';
+    markSearched();
   }
 
   async function drain() {
     while (queue.length) {
       const id = queue.shift() as string;
+      let again = false;
       try {
-        await autoPickOne(id);
+        // One retry at the end of the queue: Openverse often answers a query it timed out on
+        // once it has had time to cache it.
+        again = (await autoPickOne(id)) === 'retry' && !retried.has(id);
       } catch (err) {
         log(`auto picture failed: ${(err as Error).message}`);
-      } finally {
+      }
+      if (again) {
+        retried.add(id);
+        queue.push(id);
+      } else {
+        retried.delete(id);
         queued.delete(id);
       }
     }

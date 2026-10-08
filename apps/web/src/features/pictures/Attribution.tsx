@@ -1,6 +1,11 @@
 import type { PictureDto } from '@alivocab/shared';
 
-const PROVIDER_LABEL = { openverse: 'Openverse', pexels: 'Pexels', upload: 'your upload' } as const;
+const PROVIDER_LABEL = {
+  wikimedia: 'Wikimedia Commons',
+  openverse: 'Openverse',
+  pexels: 'Pexels',
+  upload: 'your upload',
+} as const;
 
 /** Credit line required by the licenses (creator, license, source). */
 export function Attribution({ image }: { image: PictureDto }) {

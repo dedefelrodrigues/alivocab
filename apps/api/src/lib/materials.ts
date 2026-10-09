@@ -54,7 +54,7 @@ export const MATERIAL_GENERATION_KIND = {
 /** Words offered to the AI per material. */
 const WORDS_PER_KIND: Record<MaterialKind, number> = { listening: 15, grammar: 25 };
 
-type ThemeWord = MaterialWord & { id: string };
+export type ThemeWord = MaterialWord & { id: string };
 
 /** Theme words for a material: the ones still being learned first. */
 export function materialWords(db: Db, userId: string, theme: ThemeRow, kind: MaterialKind) {
@@ -161,14 +161,9 @@ function containsWord(text: string, word: string, lang: string): boolean {
   }
 }
 
-/** Theme words that appear in the material, as the lemma or one of its stored forms. */
-export function wordsUsed(
-  theme: ThemeRow,
-  kind: MaterialKind,
-  content: ListeningScript | GrammarNote,
-  words: ThemeWord[],
-): string[] {
-  const text = normalizeKey(targetText(kind, content), theme.targetLang);
+/** Theme words that appear in a text, as the lemma or one of its stored forms. */
+export function wordsInText(theme: ThemeRow, raw: string, words: ThemeWord[]): string[] {
+  const text = normalizeKey(raw, theme.targetLang);
   return words
     .filter((w) =>
       [w.lemma, ...Object.values(w.forms ?? {})].some((form) =>
@@ -187,7 +182,7 @@ export function saveMaterial(
   generationId: string | null,
 ): MaterialDto {
   const { all } = materialWords(db, userId, theme, kind);
-  const used = wordsUsed(theme, kind, content, all);
+  const used = wordsInText(theme, targetText(kind, content), all);
   const row = db.transaction((tx) => {
     const lesson = tx
       .insert(lessons)
@@ -230,30 +225,27 @@ export function listMaterials(db: Db, userId: string, themeId: string): Material
       and(
         eq(lessons.userId, userId),
         eq(lessons.themeId, themeId),
-        inArray(lessons.kind, ['listening', 'grammar']),
+        inArray(lessons.kind, ['listening', 'grammar', 'roleplay']),
       ),
     )
     .orderBy(desc(lessons.createdAt))
     .all()
     .map((r) => ({
       id: r.id,
-      kind: r.kind as MaterialKind,
+      kind: r.kind as MaterialSummaryDto['kind'],
       title: r.title,
       createdAt: r.createdAt.toISOString(),
       wordCount: r.wordCount,
     }));
 }
 
-export function materialDto(db: Db, row: LessonRow): MaterialDto {
-  const theme = row.themeId
-    ? db.select().from(themes).where(eq(themes.id, row.themeId)).get()
-    : undefined;
-  const nativeLang = theme?.nativeLang ?? 'en';
+/** The theme words linked to a lesson row, with translations. */
+export function lessonWords(db: Db, lessonId: string, nativeLang: string) {
   const words = db
     .select({ id: lexemes.id, lemma: lexemes.lemma, lang: lexemes.lang })
     .from(lessonLexemes)
     .innerJoin(lexemes, eq(lexemes.id, lessonLexemes.lexemeId))
-    .where(eq(lessonLexemes.lessonId, row.id))
+    .where(eq(lessonLexemes.lessonId, lessonId))
     .orderBy(asc(lexemes.lemma))
     .all();
   const translations = new Map<string, string[]>();
@@ -275,6 +267,20 @@ export function materialDto(db: Db, row: LessonRow): MaterialDto {
       translations.set(t.lexemeId, [...(translations.get(t.lexemeId) ?? []), t.text]);
     }
   }
+  return words.map((w) => ({
+    lexemeId: w.id,
+    lemma: w.lemma,
+    lang: w.lang,
+    translations: translations.get(w.id) ?? [],
+  }));
+}
+
+export function materialDto(db: Db, row: LessonRow): MaterialDto {
+  const theme = row.themeId
+    ? db.select().from(themes).where(eq(themes.id, row.themeId)).get()
+    : undefined;
+  const nativeLang = theme?.nativeLang ?? 'en';
+  const words = lessonWords(db, row.id, nativeLang);
   const base = {
     id: row.id,
     title: row.title,
@@ -283,11 +289,7 @@ export function materialDto(db: Db, row: LessonRow): MaterialDto {
     themeId: row.themeId,
     lang: theme?.targetLang ?? words[0]?.lang ?? 'pl',
     nativeLang,
-    words: words.map((w) => ({
-      lexemeId: w.id,
-      lemma: w.lemma,
-      translations: translations.get(w.id) ?? [],
-    })),
+    words: words.map(({ lexemeId, lemma, translations }) => ({ lexemeId, lemma, translations })),
   };
   return row.kind === 'listening'
     ? { ...base, kind: 'listening', content: row.content as ListeningScript }

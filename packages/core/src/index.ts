@@ -9,6 +9,7 @@ export * from './materials/parse.ts';
 export * from './materials/prompts.ts';
 export * from './prompts/examples.ts';
 export * from './prompts/forms.ts';
+export * from './prompts/roleplay.ts';
 export * from './prompts/translationCheck.ts';
 export * from './prompts/vocabProposal.ts';
 export * from './srs/scheduler.ts';

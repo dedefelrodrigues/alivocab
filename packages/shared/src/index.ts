@@ -5,5 +5,6 @@ export * from './lesson.ts';
 export * from './materials.ts';
 export * from './practice.ts';
 export * from './review.ts';
+export * from './roleplay.ts';
 export * from './stats.ts';
 export * from './vocab.ts';

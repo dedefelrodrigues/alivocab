@@ -20,6 +20,8 @@ export type ExerciseContext = {
   /** Enough other words to offer text options. */
   canChooseText: boolean;
   hasCloze: boolean;
+  /** The word has grammatical forms to drill. */
+  hasDrill?: boolean;
   rand?: () => number;
 };
 
@@ -42,8 +44,13 @@ export function chooseExercise(ctx: ExerciseContext): ExerciseKind {
     if (ctx.canChooseText) return 'choose_word';
     return 'type_word';
   }
-  if (ctx.hasCloze && rand() < 0.5) return 'cloze';
-  return 'type_word';
+  // Established: rotate between a sentence gap, a form drill and plain typing.
+  const kinds: ExerciseKind[] = [
+    ...(ctx.hasCloze ? (['cloze'] as const) : []),
+    ...(ctx.hasDrill ? (['drill'] as const) : []),
+    'type_word',
+  ];
+  return kinds[Math.floor(rand() * kinds.length)] ?? 'type_word';
 }
 
 export type ExerciseRating = 'again' | 'hard' | 'good' | 'easy';
@@ -65,7 +72,7 @@ export function ratingFor(result: {
 }): ExerciseRating {
   if (result.verdict === 'wrong') return 'again';
   if (result.verdict !== 'correct' || result.hinted) return 'hard';
-  const typed = result.kind === 'type_word' || result.kind === 'cloze';
+  const typed = result.kind === 'type_word' || result.kind === 'cloze' || result.kind === 'drill';
   if (typed && !result.isNew && result.responseMs !== undefined) {
     if (result.responseMs <= FAST_ANSWER_MS) return 'easy';
   }
@@ -73,8 +80,11 @@ export function ratingFor(result: {
 }
 
 /** The `exercise_type` recorded in review logs and exposures. */
-export function exerciseTypeOf(kind: ExerciseKind): 'flashcard' | 'mcq' | 'typing' | 'cloze' {
+export function exerciseTypeOf(
+  kind: ExerciseKind,
+): 'flashcard' | 'mcq' | 'typing' | 'cloze' | 'drill' {
   if (kind === 'intro') return 'flashcard';
+  if (kind === 'drill') return 'drill';
   if (kind === 'cloze') return 'cloze';
   if (kind === 'type_word') return 'typing';
   return 'mcq';

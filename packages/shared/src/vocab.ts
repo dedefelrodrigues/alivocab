@@ -294,31 +294,34 @@ export const GENDER_LABELS: Record<Gender, string> = {
   nmp: 'non-virile pl.',
 };
 
-/** Example sentences for theme words that have none (on demand, from AI). */
-export const examplesGenerateSchema = z.object({
+/** What AI can fill in for theme words that lack it: example sentences or grammatical forms. */
+export const FILL_KINDS = ['examples', 'forms'] as const;
+export type FillKind = (typeof FILL_KINDS)[number];
+
+export const fillGenerateSchema = z.object({
   credentialId: z.string().min(1),
   model: z.string().trim().min(1).max(200).optional(),
 });
 
-export const examplesImportSchema = z.object({
+export const fillImportSchema = z.object({
   raw: z.string().min(1).max(300_000),
   /** The prompt that produced `raw`, kept for the generation log. */
   prompt: z.string().max(100_000).optional(),
 });
 
-export type ExamplesPromptDto = {
+export type FillPromptDto = {
   prompt: string;
   promptVersion: string;
   /** Words the prompt asks about (at most one batch). */
   lemmas: string[];
 };
 
-export type ExamplesResultDto = {
-  /** Sentences saved. */
+export type FillResultDto = {
+  /** Sentences or form sets saved. */
   added: number;
-  /** Words that got at least one sentence. */
+  /** Words that got something. */
   words: number;
-  /** Theme words still without a usable sentence. */
+  /** Theme words still missing it. */
   remaining: number;
   issues: ImportIssue[];
 };

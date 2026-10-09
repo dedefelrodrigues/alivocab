@@ -9,6 +9,8 @@ export const LESSON_MODES = [
   'due',
   /** Extra practice on the weakest words, outside the schedule (counts exposures only). */
   'practice',
+  /** Grammar drills (forms) on words that have them, outside the schedule like `practice`. */
+  'drill',
 ] as const;
 export type LessonMode = (typeof LESSON_MODES)[number];
 
@@ -38,6 +40,13 @@ export type LessonItemDto = {
   options: LessonOptionDto[] | null;
   /** The blanked sentence for `cloze`. */
   cloze: { before: string; answer: string; after: string; translation: string | null } | null;
+  /** The form to produce for `drill`. */
+  drill: {
+    formKey: string;
+    label: string;
+    frame: { before: string; after: string; translation: string } | null;
+    answer: string;
+  } | null;
 };
 
 export type LessonDto = {

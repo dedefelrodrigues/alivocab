@@ -1,13 +1,14 @@
 import { describeAiError, generateAnswer } from '@alivocab/ai';
-import { EXAMPLES_PROMPT_VERSION } from '@alivocab/core';
 import { schema } from '@alivocab/db';
 import {
   type ContentSource,
   createThemeSchema,
-  type ExamplesPromptDto,
-  type ExamplesResultDto,
-  examplesGenerateSchema,
-  examplesImportSchema,
+  FILL_KINDS,
+  type FillKind,
+  type FillPromptDto,
+  type FillResultDto,
+  fillGenerateSchema,
+  fillImportSchema,
   saveWordsSchema,
   type ThemeDetailDto,
   themeUpdateSchema,
@@ -15,13 +16,16 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { openModel } from '../lib/ai-model.ts';
 import {
-  EXAMPLES_BATCH,
-  examplesPrompt,
-  saveExamples,
-  wordsNeedingExamples,
-} from '../lib/examples.ts';
+  FILL_BATCH,
+  FILL_GENERATION_KIND,
+  FILL_PROMPT_VERSION,
+  fillPrompt,
+  saveFill,
+  wordsNeeding,
+} from '../lib/fill.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
@@ -38,25 +42,34 @@ import type { AppDeps, AuthedEnv } from '../types.ts';
 
 const { themes, themeLexemes, aiGenerations } = schema;
 
+const fillParams = z.object({ id: z.string().min(1), kind: z.enum(FILL_KINDS) });
+
 export const themeRoutes = (deps: AppDeps) => {
   const { db, auth, pictures } = deps;
 
-  /** Logs an example-sentence generation (API call or pasted answer). */
-  const logExamples = (values: {
-    userId: string;
-    source: 'api' | 'manual';
-    prompt: string;
-    rawOutput: string | null;
-    parsedOk: boolean;
-    provider?: string;
-    model?: string;
-    error?: string;
-    tokensIn?: number;
-    tokensOut?: number;
-  }) =>
+  /** Logs a fill-in generation (API call or pasted answer). */
+  const logFill = (
+    kind: FillKind,
+    values: {
+      userId: string;
+      source: 'api' | 'manual';
+      prompt: string;
+      rawOutput: string | null;
+      parsedOk: boolean;
+      provider?: string;
+      model?: string;
+      error?: string;
+      tokensIn?: number;
+      tokensOut?: number;
+    },
+  ) =>
     db
       .insert(aiGenerations)
-      .values({ kind: 'example_sentences', promptVersion: EXAMPLES_PROMPT_VERSION, ...values })
+      .values({
+        kind: FILL_GENERATION_KIND[kind],
+        promptVersion: FILL_PROMPT_VERSION[kind],
+        ...values,
+      })
       .returning({ id: aiGenerations.id })
       .get().id;
 
@@ -162,42 +175,51 @@ export const themeRoutes = (deps: AppDeps) => {
           theme: themeSummary(db, userId, findOwnedTheme(db, userId, theme.id)),
         });
       })
-      // Example sentences for words that have none (fill-in exercises need them).
-      .post('/:id/examples/prompt', (c) => {
-        const theme = findOwnedTheme(db, c.get('user').id, c.req.param('id'));
-        const targets = wordsNeedingExamples(db, theme).slice(0, EXAMPLES_BATCH);
-        const dto: ExamplesPromptDto = {
-          prompt: targets.length ? examplesPrompt(theme, targets) : '',
-          promptVersion: EXAMPLES_PROMPT_VERSION,
+      // AI fills in what theme words lack: example sentences or grammatical forms.
+      .post('/:id/fill/:kind/prompt', validate('param', fillParams), (c) => {
+        const { id, kind } = c.req.valid('param');
+        const theme = findOwnedTheme(db, c.get('user').id, id);
+        const targets = wordsNeeding(db, theme, kind).slice(0, FILL_BATCH[kind]);
+        const dto: FillPromptDto = {
+          prompt: targets.length ? fillPrompt(theme, kind, targets) : '',
+          promptVersion: FILL_PROMPT_VERSION[kind],
           lemmas: targets.map((t) => t.lemma),
         };
         return c.json(dto);
       })
-      .post('/:id/examples/import', validate('json', examplesImportSchema), (c) => {
-        const userId = c.get('user').id;
-        const theme = findOwnedTheme(db, userId, c.req.param('id'));
-        const { raw, prompt } = c.req.valid('json');
-        const result = saveExamples(db, theme, raw, null);
-        logExamples({
-          userId,
-          source: 'manual',
-          prompt: prompt ?? '',
-          rawOutput: raw,
-          parsedOk: result.added > 0,
-        });
-        return c.json(result);
-      })
       .post(
-        '/:id/examples/generate',
+        '/:id/fill/:kind/import',
+        validate('param', fillParams),
+        validate('json', fillImportSchema),
+        (c) => {
+          const userId = c.get('user').id;
+          const { id, kind } = c.req.valid('param');
+          const theme = findOwnedTheme(db, userId, id);
+          const { raw, prompt } = c.req.valid('json');
+          const result = saveFill(db, theme, kind, raw, null);
+          logFill(kind, {
+            userId,
+            source: 'manual',
+            prompt: prompt ?? '',
+            rawOutput: raw,
+            parsedOk: result.added > 0,
+          });
+          return c.json(result);
+        },
+      )
+      .post(
+        '/:id/fill/:kind/generate',
         rateLimitPerUser({ max: 20, windowMs: 10 * 60_000 }),
-        validate('json', examplesGenerateSchema),
+        validate('param', fillParams),
+        validate('json', fillGenerateSchema),
         async (c) => {
           const userId = c.get('user').id;
-          const theme = findOwnedTheme(db, userId, c.req.param('id'));
+          const { id, kind } = c.req.valid('param');
+          const theme = findOwnedTheme(db, userId, id);
           const input = c.req.valid('json');
-          const targets = wordsNeedingExamples(db, theme).slice(0, EXAMPLES_BATCH);
+          const targets = wordsNeeding(db, theme, kind).slice(0, FILL_BATCH[kind]);
           if (!targets.length) {
-            const none: ExamplesResultDto = { added: 0, words: 0, remaining: 0, issues: [] };
+            const none: FillResultDto = { added: 0, words: 0, remaining: 0, issues: [] };
             return c.json(none);
           }
           const { model, provider, modelId, disableReasoning } = await openModel(
@@ -206,7 +228,7 @@ export const themeRoutes = (deps: AppDeps) => {
             input.credentialId,
             input.model,
           );
-          const prompt = examplesPrompt(theme, targets);
+          const prompt = fillPrompt(theme, kind, targets);
           let answer: Awaited<ReturnType<typeof generateAnswer>>;
           try {
             answer = await generateAnswer({
@@ -214,11 +236,11 @@ export const themeRoutes = (deps: AppDeps) => {
               prompt,
               maxOutputTokens: Math.min(8_000, 160 * targets.length + 600),
               disableReasoning,
-              emptyHint: 'returned no sentences. Try a non-reasoning model.',
+              emptyHint: 'returned nothing. Try a non-reasoning model.',
             });
           } catch (err) {
             const message = describeAiError(err);
-            logExamples({
+            logFill(kind, {
               userId,
               source: 'api',
               prompt,
@@ -230,7 +252,7 @@ export const themeRoutes = (deps: AppDeps) => {
             });
             throw new HTTPException(502, { message });
           }
-          const generationId = logExamples({
+          const generationId = logFill(kind, {
             userId,
             source: 'api',
             prompt,
@@ -241,7 +263,7 @@ export const themeRoutes = (deps: AppDeps) => {
             tokensIn: answer.tokensIn,
             tokensOut: answer.tokensOut,
           });
-          const result = saveExamples(db, theme, answer.text, generationId);
+          const result = saveFill(db, theme, kind, answer.text, generationId);
           db.update(aiGenerations)
             .set({ parsedOk: result.added > 0 })
             .where(eq(aiGenerations.id, generationId))

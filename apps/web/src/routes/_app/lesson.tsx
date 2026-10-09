@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChoiceExercise } from '@/features/lesson/ChoiceExercise';
 import { Feedback } from '@/features/lesson/Feedback';
 import { emptyStats, type LessonStats, LessonSummary } from '@/features/lesson/LessonSummary';
-import { TypeExercise } from '@/features/lesson/TypeExercise';
+import { expectedAnswer, TypeExercise } from '@/features/lesson/TypeExercise';
 import { Flashcard } from '@/features/review/Flashcard';
 import { RATING_KEYS, RatingBar } from '@/features/review/RatingBar';
 import { speak } from '@/hooks/useVoices';
@@ -79,7 +79,7 @@ function LessonPage() {
           )}
         </Button>
         <h1 className="flex-1 truncate text-xl font-bold tracking-tight">
-          {mode === 'practice' ? 'Practice' : 'Lesson'}
+          {mode === 'practice' ? 'Practice' : mode === 'drill' ? 'Grammar drill' : 'Lesson'}
           {theme ? `: ${theme.name}` : ''}
         </h1>
       </div>
@@ -129,9 +129,13 @@ function Empty({
         </>
       ) : (
         <>
-          <p className="font-medium">No words to practice yet</p>
+          <p className="font-medium">
+            {mode === 'drill' ? 'No words to drill yet' : 'No words to practice yet'}
+          </p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Words show up here once you’ve seen them in a review or lesson.
+            {mode === 'drill'
+              ? 'Drills use grammatical forms of words you’ve already seen. Words without forms can get them from the theme menu (Add grammar forms).'
+              : 'Words show up here once you’ve seen them in a review or lesson.'}
           </p>
           <Button asChild variant="outline">
             <Link to={themeId ? '/themes/$themeId' : '/themes'} params={{ themeId: themeId ?? '' }}>
@@ -292,8 +296,7 @@ function Session({
 
   const type = (text: string, hinted: boolean) => {
     if (!item || answer) return;
-    const target =
-      item.kind === 'cloze' ? (item.cloze?.answer ?? item.card.lemma) : item.card.lemma;
+    const target = expectedAnswer(item);
     const check = text.trim()
       ? checkAnswer(text, acceptedAnswers([target]), item.card.lang)
       : { verdict: 'wrong' as const, expected: target };

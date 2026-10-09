@@ -4,11 +4,50 @@ import { Eye, Lightbulb } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SpeakButton } from '@/features/themes/SpeakButton';
 import { WordMeta } from '@/features/themes/WordMeta';
 
-/** The question part: a meaning (and picture) to name, or a sentence with a gap. */
+/** What the learner should type for a typing exercise. */
+export function expectedAnswer(item: LessonItemDto): string {
+  if (item.kind === 'drill' && item.drill) return item.drill.answer;
+  if (item.kind === 'cloze' && item.cloze) return item.cloze.answer;
+  return item.card.lemma;
+}
+
+/** The question part: a meaning (and picture) to name, a sentence gap, or a form to produce. */
 function Question({ item, showMeaning }: { item: LessonItemDto; showMeaning: boolean }) {
   const { card } = item;
+  if (item.kind === 'drill' && item.drill) {
+    const { drill } = item;
+    return (
+      <div className="grid place-items-center gap-2 text-center">
+        <div className="flex items-center gap-1">
+          <p className="text-3xl font-semibold break-words" lang={card.lang}>
+            {card.lemma}
+          </p>
+          <SpeakButton text={card.lemma} lang={card.lang} />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {card.translations.join(', ')} ·{' '}
+          <WordMeta pos={card.pos} gender={card.gender} aspect={card.aspect} />
+        </p>
+        <p className="font-medium">→ {drill.label}</p>
+        {drill.frame && (
+          <>
+            <p className="text-2xl font-medium" lang={card.lang}>
+              {drill.frame.before}
+              <span className="mx-1 inline-block min-w-16 border-b-2 border-primary align-baseline">
+                <span className="sr-only">gap</span>
+                &nbsp;
+              </span>
+              {drill.frame.after}
+            </p>
+            <p className="text-sm text-muted-foreground">{drill.frame.translation}</p>
+          </>
+        )}
+      </div>
+    );
+  }
   if (item.kind === 'cloze' && item.cloze) {
     return (
       <div className="grid place-items-center gap-2 text-center">
@@ -66,7 +105,7 @@ export function TypeExercise({
   const [hint, setHint] = useState(0);
   const [meaningShown, setMeaningShown] = useState(!card.image);
   const input = useRef<HTMLInputElement>(null);
-  const answer = item.kind === 'cloze' ? (item.cloze?.answer ?? card.lemma) : card.lemma;
+  const answer = expectedAnswer(item);
   const letters = SPECIAL_LETTERS[card.lang] ?? '';
 
   const insert = (ch: string) => {
@@ -90,11 +129,13 @@ export function TypeExercise({
   return (
     <div className="space-y-5">
       <p className="text-center text-xs uppercase tracking-wide text-muted-foreground">
-        {item.kind === 'cloze'
-          ? 'Fill in the gap'
-          : card.image && !meaningShown
-            ? 'Name what you see'
-            : `Say it in ${languageName(card.lang)}`}
+        {item.kind === 'drill'
+          ? 'Grammar'
+          : item.kind === 'cloze'
+            ? 'Fill in the gap'
+            : card.image && !meaningShown
+              ? 'Name what you see'
+              : `Say it in ${languageName(card.lang)}`}
       </p>
       <Question item={item} showMeaning={meaningShown} />
       <form onSubmit={submit} className="space-y-2">

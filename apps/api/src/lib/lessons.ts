@@ -10,11 +10,13 @@ import {
   type ChoiceMode,
   chooseExercise,
   pickDistractors,
+  pickDrill,
   shuffle,
 } from '@alivocab/core';
 import type { Db } from '@alivocab/db';
 import { schema } from '@alivocab/db';
 import type {
+  ExerciseKind,
   ExerciseType,
   LessonDto,
   LessonItemDto,
@@ -112,8 +114,17 @@ function cardStates(db: Db, userId: string, cardIds: string[]) {
   );
 }
 
-/** One card per word, the weakest first: for extra practice outside the schedule. */
-function weakestCardIds(db: Db, userId: string, themeId: string | undefined, size: number) {
+/**
+ * One card per word, the weakest first: for extra practice outside the schedule. For drills,
+ * only words with grammatical forms, preferring their recall card (producing the word).
+ */
+function weakestCardIds(
+  db: Db,
+  userId: string,
+  themeId: string | undefined,
+  size: number,
+  { withForms = false } = {},
+) {
   const rows = db
     .select({ id: cards.id, lexemeId: cards.lexemeId })
     .from(cards)
@@ -132,9 +143,17 @@ function weakestCardIds(db: Db, userId: string, themeId: string | undefined, siz
               sql`(select ${themeLexemes.lexemeId} from ${themeLexemes} where ${themeLexemes.themeId} = ${themeId})`,
             )
           : undefined,
+        withForms
+          ? sql`exists (select 1 from ${lexemes} where ${lexemes.id} = ${cards.lexemeId} and ${lexemes.forms} is not null)`
+          : undefined,
       ),
     )
-    .orderBy(asc(cards.stability), desc(userLexemes.incorrectCount), asc(cards.id))
+    .orderBy(
+      ...(withForms ? [sql`case when ${cards.direction} = 'recall' then 0 else 1 end`] : []),
+      asc(cards.stability),
+      desc(userLexemes.incorrectCount),
+      asc(cards.id),
+    )
     .limit(size * 3)
     .all();
   const seen = new Set<string>();
@@ -170,7 +189,7 @@ export function buildLesson(
     lessonCards = hydrateCards(
       db,
       userId,
-      weakestCardIds(db, userId, opts.themeId, opts.size),
+      weakestCardIds(db, userId, opts.themeId, opts.size, { withForms: opts.mode === 'drill' }),
       now,
     );
     lessonCards = shuffle(lessonCards, rand);
@@ -224,16 +243,21 @@ export function buildLesson(
         })
         .find((c) => c !== null) ?? null;
     const state = states.get(card.cardId);
-    const kind = chooseExercise({
-      direction: card.direction,
-      state: state?.state ?? CARD_STATE.new,
-      stability: state?.stability ?? 0,
-      hasImage: !!card.image,
-      canChoosePicture: pictureDistractors.length >= 2,
-      canChooseText: textDistractors.length >= 2 && card.translations.length > 0,
-      hasCloze: !!cloze,
-      rand,
-    });
+    const drill = pickDrill(card, rand);
+    const kind: ExerciseKind =
+      opts.mode === 'drill'
+        ? 'drill'
+        : chooseExercise({
+            direction: card.direction,
+            state: state?.state ?? CARD_STATE.new,
+            stability: state?.stability ?? 0,
+            hasImage: !!card.image,
+            canChoosePicture: pictureDistractors.length >= 2,
+            canChooseText: textDistractors.length >= 2 && card.translations.length > 0,
+            hasCloze: !!cloze,
+            hasDrill: !!drill,
+            rand,
+          });
 
     let options: LessonOptionDto[] | null = null;
     if (kind === 'choose_picture') {
@@ -258,9 +282,15 @@ export function buildLesson(
       card,
       options,
       cloze: kind === 'cloze' ? cloze : null,
+      drill: kind === 'drill' ? drill : null,
     };
   });
-  return { mode: opts.mode, items, remaining };
+  return {
+    mode: opts.mode,
+    // A drill needs a form to ask for.
+    items: items.filter((item) => item.kind !== 'drill' || item.drill),
+    remaining,
+  };
 }
 
 /**

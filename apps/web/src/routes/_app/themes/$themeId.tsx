@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
+  Dumbbell,
   GraduationCap,
   ImageIcon,
   ImagePlus,
@@ -13,6 +14,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  TableProperties,
   Trash2,
   Unlink,
 } from 'lucide-react';
@@ -43,7 +45,7 @@ import { WordThumb } from '@/features/pictures/WordThumb';
 import { AddWordDialog } from '@/features/themes/AddWordDialog';
 import { EditThemeDialog } from '@/features/themes/EditThemeDialog';
 import { EditWordDialog } from '@/features/themes/EditWordDialog';
-import { ExamplesDialog } from '@/features/themes/ExamplesDialog';
+import { FillDialog } from '@/features/themes/FillDialog';
 import { SpeakButton } from '@/features/themes/SpeakButton';
 import { STATUS_META, StatusBar, StatusToggle } from '@/features/themes/status';
 import { WordMeta } from '@/features/themes/WordMeta';
@@ -101,7 +103,9 @@ function ThemePage() {
     onSuccess: () => void queryClient.invalidateQueries(themeQuery(themeId)),
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const [dialog, setDialog] = useState<'add' | 'edit' | 'delete' | 'examples' | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'edit' | 'delete' | 'examples' | 'forms' | null>(
+    null,
+  );
 
   const setStatus = useMutation({
     mutationFn: ({ lexemeId, status }: { lexemeId: string; status: WordStatus }) =>
@@ -199,6 +203,9 @@ function ThemePage() {
             <DropdownMenuItem onSelect={() => setDialog('examples')}>
               <MessageSquareText /> Add example sentences
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setDialog('forms')}>
+              <TableProperties /> Add grammar forms
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setDialog('delete')} variant="destructive">
               <Trash2 /> Delete theme
             </DropdownMenuItem>
@@ -217,6 +224,11 @@ function ThemePage() {
         <Button asChild variant="outline" disabled={!theme.wordCount}>
           <Link to="/review" search={{ themeId: theme.id }}>
             <Layers /> Flashcards
+          </Link>
+        </Button>
+        <Button asChild variant="outline" disabled={!theme.wordCount}>
+          <Link to="/lesson" search={{ themeId: theme.id, mode: 'drill' }}>
+            <Dumbbell /> Grammar drill
           </Link>
         </Button>
         <Button asChild variant="outline">
@@ -299,8 +311,8 @@ function ThemePage() {
         />
       )}
       {dialog === 'edit' && <EditThemeDialog theme={theme} onClose={() => setDialog(null)} />}
-      {dialog === 'examples' && (
-        <ExamplesDialog themeId={theme.id} onClose={() => setDialog(null)} />
+      {(dialog === 'examples' || dialog === 'forms') && (
+        <FillDialog themeId={theme.id} kind={dialog} onClose={() => setDialog(null)} />
       )}
       {editingWord && (
         <EditWordDialog

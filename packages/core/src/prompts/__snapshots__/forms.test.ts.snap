@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildFormsPrompt > matches the snapshot 1`] = `
+"You are an expert Polish grammarian. Give the key grammatical forms of these 2 Polish words:
+- kot (noun: cat)
+- obierać (verb: to peel)
+
+Rules:
+- "forms" uses exactly these keys, depending on the part of speech: nouns: gen_sg, nom_pl, ins_sg; verbs: pres_1sg, pres_2sg, pres_3pl (for perfective verbs use the future forms), past_m; adjectives: f, n, nom_pl_virile.
+- Give each form as it is written, without pronouns or articles; leave out keys that do not apply (e.g. no plural for uncountable nouns).
+- Words that do not inflect (adverbs, conjunctions, set phrases) get "forms": {}.
+- Keep "lemma", "pos" and "translation" exactly as given.
+
+Output ONLY a JSON array, no commentary, one object per word:
+\`\`\`json
+[
+  {
+    "lemma": "<word as given>",
+    "pos": "<pos as given>",
+    "translation": "<meaning as given>",
+    "forms": {
+      "<form key>": "<form>"
+    }
+  }
+]
+\`\`\`"
+`;

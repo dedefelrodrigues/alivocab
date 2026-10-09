@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acceptedAnswers, checkAnswer, editDistance } from './answer.ts';
 import { buildCloze, type ChoiceCandidate, pickDistractors, shuffle } from './choices.ts';
+import { pickDrill } from './drills.ts';
 import { chooseExercise, ratingFor } from './plan.ts';
 
 /** Deterministic pseudo-random numbers for tests. */
@@ -206,5 +207,59 @@ describe('ratingFor', () => {
       ratingFor({ verdict: 'correct', kind: 'type_word', responseMs: 3000, isNew: true }),
     ).toBe('good');
     expect(ratingFor({ verdict: 'correct', kind: 'type_word', responseMs: 9000 })).toBe('good');
+  });
+});
+
+describe('pickDrill', () => {
+  const kot = {
+    lemma: 'kot',
+    lang: 'pl',
+    forms: { gen_sg: 'kota', nom_pl: 'koty', ins_sg: 'kotem' },
+  };
+
+  it('asks for a form with a Polish sentence frame', () => {
+    expect(pickDrill(kot, () => 0.9)).toEqual({
+      formKey: 'ins_sg',
+      label: 'instrumental singular',
+      frame: { before: 'Idę z ', after: '.', translation: 'I’m going with …' },
+      answer: 'kotem',
+    });
+  });
+
+  it('prefers forms that differ from the dictionary form', () => {
+    const woda = { lemma: 'woda', lang: 'pl', forms: { gen_sg: 'wody', nom_pl: 'woda' } };
+    expect(pickDrill(woda, () => 0.99)?.formKey).toBe('gen_sg');
+  });
+
+  it('works without frames in other languages and skips unknown keys', () => {
+    expect(
+      pickDrill({ lemma: 'gato', lang: 'pt', forms: { pl: 'gatos', weird: 'x' } }, () => 0.5),
+    ).toEqual({
+      formKey: 'pl',
+      label: 'plural',
+      frame: null,
+      answer: 'gatos',
+    });
+    expect(pickDrill({ lemma: 'x', lang: 'pl', forms: null })).toBeNull();
+    expect(pickDrill({ lemma: 'x', lang: 'pl', forms: { weird: 'y' } })).toBeNull();
+  });
+});
+
+describe('chooseExercise with drills', () => {
+  it('includes drills among the established-recall exercises', () => {
+    const ctx = {
+      direction: 'recall' as const,
+      state: 2,
+      stability: 5,
+      hasImage: false,
+      canChoosePicture: false,
+      canChooseText: true,
+      hasCloze: true,
+      hasDrill: true,
+    };
+    expect(chooseExercise({ ...ctx, rand: () => 0.1 })).toBe('cloze');
+    expect(chooseExercise({ ...ctx, rand: () => 0.5 })).toBe('drill');
+    expect(chooseExercise({ ...ctx, rand: () => 0.9 })).toBe('type_word');
+    expect(ratingFor({ verdict: 'correct', kind: 'drill', responseMs: 2000 })).toBe('easy');
   });
 });

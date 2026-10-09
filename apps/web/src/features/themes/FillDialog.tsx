@@ -1,4 +1,4 @@
-import { AI_PROVIDER_INFO, type ExamplesResultDto } from '@alivocab/shared';
+import { AI_PROVIDER_INFO, type FillKind, type FillResultDto } from '@alivocab/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Loader2, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -17,11 +17,42 @@ import { credentialsQuery } from '@/lib/queries';
 const textareaClass =
   'w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30';
 
+const COPY: Record<
+  FillKind,
+  { title: string; description: string; done: string; unit: [string, string]; action: string }
+> = {
+  examples: {
+    title: 'Add example sentences',
+    description:
+      'Fill-in-the-gap exercises use a sentence for each word. These words don’t have one yet.',
+    done: 'Every word in this theme already has a sentence. 🎉',
+    unit: ['sentence', 'sentences'],
+    action: 'Write sentences',
+  },
+  forms: {
+    title: 'Add grammar forms',
+    description:
+      'Grammar drills ask for forms like cases and verb persons. These words don’t have them yet.',
+    done: 'Every word in this theme that changes form already has its forms. 🎉',
+    unit: ['set of forms', 'sets of forms'],
+    action: 'Add forms',
+  },
+};
+
 /**
- * Adds example sentences to theme words that have none (fill-in exercises need them), with a
- * saved API key or by copying the prompt into any AI chat and pasting the answer.
+ * Fills in what theme words lack (example sentences or grammatical forms), with a saved API key
+ * or by copying the prompt into any AI chat and pasting the answer.
  */
-export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose: () => void }) {
+export function FillDialog({
+  themeId,
+  kind,
+  onClose,
+}: {
+  themeId: string;
+  kind: FillKind;
+  onClose: () => void;
+}) {
+  const copy = COPY[kind];
   const queryClient = useQueryClient();
   const { data: credentials } = useQuery(credentialsQuery);
   const [credentialId, setCredentialId] = useState('');
@@ -29,7 +60,8 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
   const [copied, setCopied] = useState(false);
 
   const prompt = useMutation({
-    mutationFn: () => unwrap(api.themes[':id'].examples.prompt.$post({ param: { id: themeId } })),
+    mutationFn: () =>
+      unwrap(api.themes[':id'].fill[':kind'].prompt.$post({ param: { id: themeId, kind } })),
     onError: (err) => toast.error(errorMessage(err)),
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: load once when opened
@@ -40,14 +72,14 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
     if (!credentialId && credentials?.[0]) setCredentialId(credentials[0].id);
   }, [credentials, credentialId]);
 
-  const finished = (result: ExamplesResultDto) => {
+  const finished = (result: FillResultDto) => {
     void queryClient.invalidateQueries({ queryKey: ['themes', themeId] });
     if (result.added) {
       toast.success(
-        `Added ${result.added} sentence${result.added === 1 ? '' : 's'} for ${result.words} word${result.words === 1 ? '' : 's'}${result.remaining ? ` · ${result.remaining} still without one` : ''}`,
+        `Added ${result.added} ${copy.unit[result.added === 1 ? 0 : 1]}${kind === 'examples' ? ` for ${result.words} word${result.words === 1 ? '' : 's'}` : ''}${result.remaining ? ` · ${result.remaining} words still to do` : ''}`,
       );
     } else {
-      toast.error(result.issues[0]?.message ?? 'No usable sentences in that answer');
+      toast.error(result.issues[0]?.message ?? `No usable ${copy.unit[1]} in that answer`);
     }
     if (result.remaining && result.added) prompt.mutate();
     else if (result.added) onClose();
@@ -57,8 +89,8 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
   const generate = useMutation({
     mutationFn: () =>
       unwrap(
-        api.themes[':id'].examples.generate.$post({
-          param: { id: themeId },
+        api.themes[':id'].fill[':kind'].generate.$post({
+          param: { id: themeId, kind },
           json: { credentialId },
         }),
       ),
@@ -69,8 +101,8 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
   const importRaw = useMutation({
     mutationFn: () =>
       unwrap(
-        api.themes[':id'].examples.import.$post({
-          param: { id: themeId },
+        api.themes[':id'].fill[':kind'].import.$post({
+          param: { id: themeId, kind },
           json: { raw, prompt: prompt.data?.prompt },
         }),
       ),
@@ -85,16 +117,14 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add example sentences</DialogTitle>
-          <DialogDescription>
-            Fill-in-the-gap exercises use a sentence for each word. These words don’t have one yet.
-          </DialogDescription>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
         {prompt.isPending ? (
           <p className="text-sm text-muted-foreground">Checking your words…</p>
         ) : lemmas.length === 0 ? (
-          <p className="text-sm">Every word in this theme already has a sentence. 🎉</p>
+          <p className="text-sm">{copy.done}</p>
         ) : (
           <div className="space-y-5">
             <p className="text-sm">
@@ -119,8 +149,8 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
                     ))}
                   </select>
                   <Button disabled={busy || !credentialId} onClick={() => generate.mutate()}>
-                    {generate.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />} Write
-                    sentences
+                    {generate.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}{' '}
+                    {copy.action}
                   </Button>
                 </div>
               </section>
@@ -167,7 +197,7 @@ export function ExamplesDialog({ themeId, onClose }: { themeId: string; onClose:
                 className={textareaClass}
               />
               <Button disabled={busy || !raw.trim()} onClick={() => importRaw.mutate()}>
-                {importRaw.isPending && <Loader2 className="animate-spin" />} Save sentences
+                {importRaw.isPending && <Loader2 className="animate-spin" />} Save
               </Button>
             </section>
           </div>

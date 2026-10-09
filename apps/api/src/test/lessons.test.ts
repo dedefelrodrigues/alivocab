@@ -212,3 +212,31 @@ describe('lessons', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('grammar drills', () => {
+  const withForms = [
+    w('kot', 'unknown', { forms: { gen_sg: 'kota', ins_sg: 'kotem' } }),
+    ...['pies', 'dom', 'las'].map((l) => w(l)),
+  ];
+
+  it('drills forms of established words inside lessons', async () => {
+    const ctx = await setup(withForms);
+    establish(ctx, 'kot', 'recall');
+    // rand 0.4: [drill, type_word] → drill
+    const item = lesson(ctx, () => 0.4).items.find((i) => i.card.lemma === 'kot');
+    expect(item?.kind).toBe('drill');
+    expect(item?.drill).toMatchObject({ answer: expect.stringMatching(/^kot(a|em)$/) });
+  });
+
+  it('runs a drill-only session on words with forms, outside the schedule', async () => {
+    const ctx = await setup(withForms);
+    establish(ctx, 'kot', 'recognition');
+    establish(ctx, 'pies', 'recognition');
+    const res = await ctx.call(`/api/lessons?themeId=${ctx.theme.id}&mode=drill`, {
+      cookie: ctx.cookie,
+    });
+    const body = (await res.json()) as LessonDto;
+    expect(body.mode).toBe('drill');
+    expect(body.items.map((i) => [i.card.lemma, i.kind])).toEqual([['kot', 'drill']]);
+  });
+});

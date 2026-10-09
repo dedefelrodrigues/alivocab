@@ -1,5 +1,5 @@
 import { schema } from '@alivocab/db';
-import type { ExamplesPromptDto, ExamplesResultDto, ThemeSummaryDto } from '@alivocab/shared';
+import type { FillPromptDto, FillResultDto, ThemeSummaryDto } from '@alivocab/shared';
 import { MockLanguageModelV4 } from 'ai/test';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -67,11 +67,11 @@ describe('example sentences on demand', () => {
   it('builds a prompt for the words without a usable sentence', async () => {
     const ctx = await setup();
     const dto = (await (
-      await ctx.call(`/api/themes/${ctx.theme.id}/examples/prompt`, {
+      await ctx.call(`/api/themes/${ctx.theme.id}/fill/examples/prompt`, {
         method: 'POST',
         cookie: ctx.cookie,
       })
-    ).json()) as ExamplesPromptDto;
+    ).json()) as FillPromptDto;
     expect(dto.lemmas).toEqual(['kot', 'pies']);
     expect(dto.prompt).toContain('- kot (noun: cat)');
     expect(dto.prompt).not.toContain('- dom');
@@ -91,12 +91,12 @@ describe('example sentences on demand', () => {
       { lemma: 'kot', pos: 'noun', translation: 'cat', example: 'Nie widzę go.', cloze: 'kotka' },
       { lemma: 'ryba', pos: 'noun', translation: 'fish', example: 'Ryba pływa.', cloze: 'Ryba' },
     ]);
-    const res = await ctx.call(`/api/themes/${ctx.theme.id}/examples/import`, {
+    const res = await ctx.call(`/api/themes/${ctx.theme.id}/fill/examples/import`, {
       method: 'POST',
       cookie: ctx.cookie,
       body: { raw },
     });
-    const result = (await res.json()) as ExamplesResultDto;
+    const result = (await res.json()) as FillResultDto;
     expect(result).toMatchObject({ added: 1, words: 1, remaining: 1 });
     expect(result.issues.map((i) => i.lemma)).toEqual(['kot', 'ryba']);
     const kot = ctx.db.select().from(schema.lexemes).where(eq(schema.lexemes.lemma, 'kot')).get();
@@ -131,7 +131,7 @@ describe('example sentences on demand', () => {
         body: { provider: 'anthropic', label: 'Claude', apiKey: 'sk-ant-test-1234' },
       })
     ).json()) as { id: string };
-    const res = await ctx.call(`/api/themes/${ctx.theme.id}/examples/generate`, {
+    const res = await ctx.call(`/api/themes/${ctx.theme.id}/fill/examples/generate`, {
       method: 'POST',
       cookie: ctx.cookie,
       body: { credentialId: cred.id },
@@ -148,7 +148,7 @@ describe('example sentences on demand', () => {
     });
 
     // Nothing left to do: no further model call.
-    const again = await ctx.call(`/api/themes/${ctx.theme.id}/examples/generate`, {
+    const again = await ctx.call(`/api/themes/${ctx.theme.id}/fill/examples/generate`, {
       method: 'POST',
       cookie: ctx.cookie,
       body: { credentialId: cred.id },
@@ -160,10 +160,60 @@ describe('example sentences on demand', () => {
   it('keeps other learners out', async () => {
     const ctx = await setup();
     const bob = await ctx.createUser('bob@test.dev');
-    const res = await ctx.call(`/api/themes/${ctx.theme.id}/examples/prompt`, {
+    const res = await ctx.call(`/api/themes/${ctx.theme.id}/fill/examples/prompt`, {
       method: 'POST',
       cookie: bob,
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('grammar forms on demand', () => {
+  it('asks for forms of inflecting words without them and fills only missing ones', async () => {
+    const ctx = createTestApp();
+    const cookie = await ctx.createUser('a@test.dev');
+    const words = [
+      { lemma: 'kot', pos: 'noun', translations: ['cat'] },
+      { lemma: 'szybko', pos: 'adverb', translations: ['fast'] },
+      { lemma: 'dom', pos: 'noun', translations: ['house'], forms: { gen_sg: 'domu' } },
+    ];
+    const theme = (await (
+      await ctx.call('/api/themes', { method: 'POST', cookie, body: { name: 'T', words } })
+    ).json()) as ThemeSummaryDto;
+
+    const dto = (await (
+      await ctx.call(`/api/themes/${theme.id}/fill/forms/prompt`, { method: 'POST', cookie })
+    ).json()) as FillPromptDto;
+    expect(dto.lemmas).toEqual(['kot']);
+    expect(dto.promptVersion).toBe('grammar-forms@1');
+    expect(dto.prompt).toContain('gen_sg, nom_pl, ins_sg');
+
+    const raw = JSON.stringify([
+      { lemma: 'kot', pos: 'noun', translation: 'cat', forms: { gen_sg: 'kota', ins_sg: 'kotem' } },
+      { lemma: 'dom', pos: 'noun', translation: 'house', forms: { gen_sg: 'WRONG' } },
+    ]);
+    const result = (await (
+      await ctx.call(`/api/themes/${theme.id}/fill/forms/import`, {
+        method: 'POST',
+        cookie,
+        body: { raw },
+      })
+    ).json()) as FillResultDto;
+    expect(result).toMatchObject({ added: 1, words: 1, remaining: 0 });
+    const forms = (lemma: string) =>
+      ctx.db.select().from(schema.lexemes).where(eq(schema.lexemes.lemma, lemma)).get()?.forms;
+    expect(forms('kot')).toEqual({ gen_sg: 'kota', ins_sg: 'kotem' });
+    expect(forms('dom')).toEqual({ gen_sg: 'domu' });
+    expect(ctx.db.select().from(schema.aiGenerations).get()).toMatchObject({
+      kind: 'drill',
+      promptVersion: 'grammar-forms@1',
+    });
+  });
+
+  it('rejects unknown kinds', async () => {
+    const ctx = createTestApp();
+    const cookie = await ctx.createUser('a@test.dev');
+    const res = await ctx.call('/api/themes/x/fill/pictures/prompt', { method: 'POST', cookie });
+    expect(res.status).toBe(400);
   });
 });

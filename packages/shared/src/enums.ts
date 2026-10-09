@@ -86,6 +86,8 @@ export const EXERCISE_KINDS = [
   'type_word',
   /** A sentence with the word blanked out → type it. Grades recall. */
   'cloze',
+  /** A grammatical form of the word (case, person, …) → type it. Grades recall. */
+  'drill',
 ] as const;
 export type ExerciseKind = (typeof EXERCISE_KINDS)[number];
 

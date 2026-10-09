@@ -16,7 +16,7 @@ export type VocabPromptInput = {
 };
 
 /** Grammatical form keys we ask for, per target language. */
-const FORM_GUIDE: Record<string, string> = {
+export const FORM_GUIDE: Record<string, string> = {
   pl: [
     'nouns: gen_sg, nom_pl, ins_sg',
     'verbs: pres_1sg, pres_2sg, pres_3pl (for perfective verbs use the future forms), past_m',
@@ -30,7 +30,8 @@ const FORM_GUIDE: Record<string, string> = {
   uk: 'nouns: gen_sg, nom_pl; verbs: pres_1sg, pres_3pl (future for perfective), past_m; adjectives: f, n',
   cs: 'nouns: gen_sg, nom_pl; verbs: pres_1sg, pres_3pl, past_m; adjectives: f, n',
 };
-const DEFAULT_FORM_GUIDE = 'nouns: plural; verbs: 3rd person singular present and simple past';
+export const DEFAULT_FORM_GUIDE =
+  'nouns: plural; verbs: 3rd person singular present and simple past';
 
 /** Languages with grammatical aspect pairs worth recording. */
 const ASPECT_LANGS = new Set(['pl', 'uk', 'cs', 'ru', 'sk']);

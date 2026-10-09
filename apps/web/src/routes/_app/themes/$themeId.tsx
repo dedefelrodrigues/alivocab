@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
+  ChevronDown,
   Dumbbell,
   GraduationCap,
   ImageIcon,
   ImagePlus,
+  Languages,
   Layers,
   MessageSquareText,
   MoreHorizontal,
@@ -15,6 +17,7 @@ import {
   Search,
   Sparkles,
   TableProperties,
+  Target,
   Trash2,
   Unlink,
 } from 'lucide-react';
@@ -227,11 +230,30 @@ function ThemePage() {
             <Layers /> Flashcards
           </Link>
         </Button>
-        <Button asChild variant="outline" disabled={!theme.wordCount}>
-          <Link to="/lesson" search={{ themeId: theme.id, mode: 'drill' }}>
-            <Dumbbell /> Grammar drill
-          </Link>
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={!theme.wordCount}>
+              <Dumbbell /> More practice <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem asChild>
+              <Link to="/lesson" search={{ themeId: theme.id, mode: 'drill' }}>
+                <TableProperties /> Grammar drill
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/lesson" search={{ themeId: theme.id, mode: 'translate' }}>
+                <Languages /> Translate sentences
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/lesson" search={{ themeId: theme.id, mode: 'practice' }}>
+                <Target /> Weakest words
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button asChild variant="outline">
           <Link to="/themes/new" search={{ themeId: theme.id }}>
             <Sparkles /> Add more words

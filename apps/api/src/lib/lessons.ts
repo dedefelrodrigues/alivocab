@@ -5,6 +5,7 @@
  */
 import {
   buildCloze,
+  buildScramble,
   CARD_STATE,
   type ChoiceCandidate,
   type ChoiceMode,
@@ -31,7 +32,16 @@ import { resolvePictures } from './pictures/resolve.ts';
 import { getOrCreateProfile } from './profile.ts';
 import { buildQueue, hydrateCards } from './srs.ts';
 
-const { cards, lexemes, lexemeTranslations, themeLexemes, themes, userLexemes, exposures } = schema;
+const {
+  cards,
+  exampleSentences,
+  lexemes,
+  lexemeTranslations,
+  themeLexemes,
+  themes,
+  userLexemes,
+  exposures,
+} = schema;
 
 /** Options per multiple-choice exercise, including the right one. */
 const OPTION_COUNT = 4;
@@ -123,7 +133,7 @@ function weakestCardIds(
   userId: string,
   themeId: string | undefined,
   size: number,
-  { withForms = false } = {},
+  { withForms = false, withExamples = false } = {},
 ) {
   const rows = db
     .select({ id: cards.id, lexemeId: cards.lexemeId })
@@ -145,6 +155,9 @@ function weakestCardIds(
           : undefined,
         withForms
           ? sql`exists (select 1 from ${lexemes} where ${lexemes.id} = ${cards.lexemeId} and ${lexemes.forms} is not null)`
+          : undefined,
+        withExamples
+          ? sql`exists (select 1 from ${exampleSentences} where ${exampleSentences.lexemeId} = ${cards.lexemeId} and ${exampleSentences.translation} is not null)`
           : undefined,
       ),
     )
@@ -189,7 +202,10 @@ export function buildLesson(
     lessonCards = hydrateCards(
       db,
       userId,
-      weakestCardIds(db, userId, opts.themeId, opts.size, { withForms: opts.mode === 'drill' }),
+      weakestCardIds(db, userId, opts.themeId, opts.size, {
+        withForms: opts.mode === 'drill',
+        withExamples: opts.mode === 'translate',
+      }),
       now,
     );
     lessonCards = shuffle(lessonCards, rand);
@@ -244,20 +260,31 @@ export function buildLesson(
         .find((c) => c !== null) ?? null;
     const state = states.get(card.cardId);
     const drill = pickDrill(card, rand);
+    const sentence =
+      card.examples
+        .map((e) => {
+          const s = buildScramble(e.text, rand);
+          return s && { ...s, translation: e.translation };
+        })
+        .find((s) => s !== null) ?? null;
+    const translatable = card.examples.find((e) => e.translation);
     const kind: ExerciseKind =
       opts.mode === 'drill'
         ? 'drill'
-        : chooseExercise({
-            direction: card.direction,
-            state: state?.state ?? CARD_STATE.new,
-            stability: state?.stability ?? 0,
-            hasImage: !!card.image,
-            canChoosePicture: pictureDistractors.length >= 2,
-            canChooseText: textDistractors.length >= 2 && card.translations.length > 0,
-            hasCloze: !!cloze,
-            hasDrill: !!drill,
-            rand,
-          });
+        : opts.mode === 'translate'
+          ? 'translate'
+          : chooseExercise({
+              direction: card.direction,
+              state: state?.state ?? CARD_STATE.new,
+              stability: state?.stability ?? 0,
+              hasImage: !!card.image,
+              canChoosePicture: pictureDistractors.length >= 2,
+              canChooseText: textDistractors.length >= 2 && card.translations.length > 0,
+              hasCloze: !!cloze,
+              hasDrill: !!drill,
+              hasSentence: !!sentence,
+              rand,
+            });
 
     let options: LessonOptionDto[] | null = null;
     if (kind === 'choose_picture') {
@@ -283,12 +310,20 @@ export function buildLesson(
       options,
       cloze: kind === 'cloze' ? cloze : null,
       drill: kind === 'drill' ? drill : null,
+      sentence: kind === 'build_sentence' ? sentence : null,
+      translate:
+        kind === 'translate' && translatable?.translation
+          ? { source: translatable.translation, reference: translatable.text }
+          : null,
     };
   });
   return {
     mode: opts.mode,
-    // A drill needs a form to ask for.
-    items: items.filter((item) => item.kind !== 'drill' || item.drill),
+    // A drill needs a form to ask for, a translation a sentence.
+    items: items.filter(
+      (item) =>
+        (item.kind !== 'drill' || item.drill) && (item.kind !== 'translate' || item.translate),
+    ),
     remaining,
   };
 }

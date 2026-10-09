@@ -9,6 +9,7 @@ import { WordMeta } from '@/features/themes/WordMeta';
 
 /** What the learner should type for a typing exercise. */
 export function expectedAnswer(item: LessonItemDto): string {
+  if (item.kind === 'translate' && item.translate) return item.translate.reference;
   if (item.kind === 'drill' && item.drill) return item.drill.answer;
   if (item.kind === 'cloze' && item.cloze) return item.cloze.answer;
   return item.card.lemma;
@@ -17,6 +18,16 @@ export function expectedAnswer(item: LessonItemDto): string {
 /** The question part: a meaning (and picture) to name, a sentence gap, or a form to produce. */
 function Question({ item, showMeaning }: { item: LessonItemDto; showMeaning: boolean }) {
   const { card } = item;
+  if (item.kind === 'translate' && item.translate) {
+    return (
+      <div className="grid place-items-center gap-2 text-center">
+        <p className="text-2xl leading-relaxed font-medium">{item.translate.source}</p>
+        <p className="text-sm text-muted-foreground">
+          Uses “{card.lemma}” ({card.translations.join(', ')})
+        </p>
+      </div>
+    );
+  }
   if (item.kind === 'drill' && item.drill) {
     const { drill } = item;
     return (
@@ -129,13 +140,15 @@ export function TypeExercise({
   return (
     <div className="space-y-5">
       <p className="text-center text-xs uppercase tracking-wide text-muted-foreground">
-        {item.kind === 'drill'
-          ? 'Grammar'
-          : item.kind === 'cloze'
-            ? 'Fill in the gap'
-            : card.image && !meaningShown
-              ? 'Name what you see'
-              : `Say it in ${languageName(card.lang)}`}
+        {item.kind === 'translate'
+          ? `Translate into ${languageName(card.lang)}`
+          : item.kind === 'drill'
+            ? 'Grammar'
+            : item.kind === 'cloze'
+              ? 'Fill in the gap'
+              : card.image && !meaningShown
+                ? 'Name what you see'
+                : `Say it in ${languageName(card.lang)}`}
       </p>
       <Question item={item} showMeaning={meaningShown} />
       <form onSubmit={submit} className="space-y-2">

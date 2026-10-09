@@ -88,6 +88,10 @@ export const EXERCISE_KINDS = [
   'cloze',
   /** A grammatical form of the word (case, person, …) → type it. Grades recall. */
   'drill',
+  /** An example sentence's words shuffled → put them in order. Grades recall. */
+  'build_sentence',
+  /** A sentence in the native language → translate it (practice only, see `mode: translate`). */
+  'translate',
 ] as const;
 export type ExerciseKind = (typeof EXERCISE_KINDS)[number];
 

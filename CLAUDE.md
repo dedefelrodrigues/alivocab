@@ -135,7 +135,7 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   `reportProblem()` from `src/lib/activity.ts`. Never log request bodies, passwords or keys.
 - Pronunciation: the web app always calls `speak()` from `src/lib/speech.ts` (never
   `speechSynthesis` directly); cloud audio comes from `POST /api/tts` (`lib/tts.ts`, cached by
-  content hash). Tests inject `synthesizeFn` instead of calling providers.
+  content hash; the chosen provider, then Edge via `ttsChain()`, then the browser in the web app). Tests inject `synthesizeFn` instead of calling providers.
 - Pictures: everything goes through the picture service (`apps/api/src/lib/pictures`, `deps.pictures`).
   Which picture a user sees is decided only by `resolvePictures()` (hidden → own choice → shared
   default). Downloads must go through `downloadImage()` (SSRF guard, size cap, sharp re-encode).

@@ -1,7 +1,8 @@
 /**
- * Cloud pronunciation: speaks text with the learner's chosen provider (Microsoft Edge voices
- * without a key, or OpenAI / Gemini with their own key) and caches the audio on disk by
- * content, so each sentence is generated (and paid for) once.
+ * Cloud pronunciation: speaks text with the learner's chosen provider (Gemini or OpenAI with
+ * their own key, or Microsoft Edge voices without one), falling back to Edge when the choice
+ * fails, and caches the audio on disk by content, so each sentence is generated (and paid
+ * for) once. If nothing works, the web app falls back to the browser's voice.
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -9,10 +10,17 @@ import { join } from 'node:path';
 import { createSpeechModel, describeAiError, synthesize, synthesizeEdge } from '@alivocab/ai';
 import { normalizeText } from '@alivocab/core';
 import { schema } from '@alivocab/db';
-import { CLOUD_TTS, type CloudTtsProvider, cloudVoice, languageName } from '@alivocab/shared';
+import {
+  CLOUD_TTS,
+  type CloudTtsProvider,
+  cloudVoice,
+  cloudVoices,
+  languageName,
+} from '@alivocab/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { AppDeps } from '../types.ts';
+import { recordLog } from './activity.ts';
 import { decryptKey } from './credentials.ts';
 import { getOrCreateProfile } from './profile.ts';
 
@@ -39,12 +47,35 @@ export function audioKey(provider: string, voice: string, lang: string, text: st
     .digest('hex');
 }
 
-/** Returns the cache hash of the spoken text (generating the audio if needed). */
+/** After a provider fails for a learner, skip it for this long (rate limits, outages). */
+export const PROVIDER_COOLDOWN_MS = 5 * 60_000;
+/** A provider with a fallback after it gets this long before we move on. */
+const FIRST_CHOICE_TIMEOUT_MS = 20_000;
+
+/** `${userId}:${provider}` → time until which the provider is skipped. */
+const cooldowns = new Map<string, number>();
+
+/** The providers to try, in order: the learner's choice, then Edge (free, no key). */
+export function ttsChain(provider: CloudTtsProvider): CloudTtsProvider[] {
+  return provider === 'edge' ? ['edge'] : [provider, 'edge'];
+}
+
+export type SpokenAudio = {
+  hash: string;
+  provider: CloudTtsProvider;
+  /** Set when an earlier provider in the chain didn't work. */
+  fallback: { from: CloudTtsProvider; reason: string } | null;
+};
+
+/**
+ * Speaks text with the first provider in the learner's chain that works (see `ttsChain()`),
+ * reusing cached audio. Throws only when none works; the web app then uses the browser's voice.
+ */
 export async function speakText(
   deps: AppDeps,
   userId: string,
   input: { text: string; lang: string; voice?: string },
-): Promise<string> {
+): Promise<SpokenAudio> {
   const { db } = deps;
   const profile = getOrCreateProfile(db, userId);
   if (profile.ttsProvider === 'browser') {
@@ -52,61 +83,144 @@ export async function speakText(
       message: 'Pronunciation uses your browser’s voices. Choose a cloud voice in Settings.',
     });
   }
-  const provider = profile.ttsProvider;
-  const voice = cloudVoice(provider, input.voice ?? profile.ttsVoice, input.lang);
-  if (!voice) {
-    throw new HTTPException(400, {
-      message: `${CLOUD_TTS[provider].label} has no ${languageName(input.lang)} voice.`,
-    });
-  }
-  const hash = audioKey(provider, voice, input.lang, input.text);
+  const chosen = profile.ttsProvider;
+  const mainVoice = cloudVoice(chosen, profile.ttsVoice, input.lang);
+  // A dialogue's second speaker asks for another voice; keep them apart after a fallback too.
+  const secondSpeaker = !!input.voice && input.voice !== mainVoice;
+  const chain = ttsChain(chosen);
+  const failures: Array<{ provider: CloudTtsProvider; reason: string }> = [];
+  // Whether any provider was actually called (else it's a setup problem, not an outage).
+  let tried = false;
 
-  const cached = db.select().from(ttsCache).where(eq(ttsCache.hash, hash)).get();
-  if (cached) return hash;
-  const pending = inFlight.get(hash);
-  if (pending) return pending;
+  for (const [i, provider] of chain.entries()) {
+    const voices = cloudVoices(provider, input.lang);
+    const voice =
+      provider === chosen
+        ? cloudVoice(provider, input.voice ?? profile.ttsVoice, input.lang)
+        : (secondSpeaker ? (voices[1] ?? voices[0]) : voices[0])?.id;
+    const fail = (reason: string) => failures.push({ provider, reason });
+    if (!voice) {
+      fail(`no ${languageName(input.lang)} voice.`);
+      continue;
+    }
 
-  const credential =
-    provider === 'edge'
-      ? null
-      : db
-          .select()
-          .from(aiCredentials)
-          .where(and(eq(aiCredentials.userId, userId), eq(aiCredentials.provider, provider)))
-          .orderBy(desc(aiCredentials.createdAt))
-          .get();
-  if (provider !== 'edge' && !credential) {
-    throw new HTTPException(400, {
-      message: `Add your ${CLOUD_TTS[provider].label} API key in Settings → AI providers to use its voices.`,
-    });
-  }
+    const hash = audioKey(provider, voice, input.lang, input.text);
+    const done = (): SpokenAudio => {
+      const first = failures[0];
+      if (first) noteFallback(db, userId, input.text, failures, provider);
+      return {
+        hash,
+        provider,
+        fallback: first ? { from: first.provider, reason: first.reason } : null,
+      };
+    };
+    if (db.select().from(ttsCache).where(eq(ttsCache.hash, hash)).get()) return done();
 
-  const job = (async () => {
-    const apiKey = credential ? decryptKey(deps.secretBox, credential, userId) : '';
-    const text = normalizeText(input.text);
-    let result: Awaited<ReturnType<typeof synthesize>>;
+    const credential =
+      provider !== 'edge'
+        ? db
+            .select()
+            .from(aiCredentials)
+            .where(and(eq(aiCredentials.userId, userId), eq(aiCredentials.provider, provider)))
+            .orderBy(desc(aiCredentials.createdAt))
+            .get()
+        : null;
+    if (provider !== 'edge' && !credential) {
+      fail('needs your API key (Settings → AI providers).');
+      continue;
+    }
+    const coolKey = `${userId}:${provider}`;
+    if ((cooldowns.get(coolKey) ?? 0) > Date.now()) {
+      fail('failed a moment ago, skipped for a few minutes.');
+      continue;
+    }
+
+    tried = true;
     try {
-      if (deps.synthesizeFn) {
-        result = await deps.synthesizeFn({ provider, apiKey, text, lang: input.lang, voice });
-      } else if (provider === 'edge') {
-        result = await synthesizeEdge({ text, voice });
-      } else {
-        result = await synthesize({
-          provider,
-          text,
-          lang: input.lang,
-          voice,
-          model: createSpeechModel({ provider, apiKey, fetch: deps.fetchFn }),
-        });
-      }
+      await generate(deps, hash, {
+        provider,
+        apiKey: credential ? decryptKey(deps.secretBox, credential, userId) : '',
+        text: normalizeText(input.text),
+        lang: input.lang,
+        voice,
+        timeoutMs: i < chain.length - 1 ? FIRST_CHOICE_TIMEOUT_MS : undefined,
+      });
+      cooldowns.delete(coolKey);
+      return done();
     } catch (err) {
-      throw new HTTPException(502, { message: describeAiError(err) });
+      cooldowns.set(coolKey, Date.now() + PROVIDER_COOLDOWN_MS);
+      fail(describeAiError(err));
+    }
+  }
+
+  const reasons = failures.map((f) => `${CLOUD_TTS[f.provider].label}: ${f.reason}`).join(' ');
+  throw new HTTPException(tried ? 502 : 400, { message: reasons || 'No voice available.' });
+}
+
+/** Records in the activity log that the learner's first choice didn't work. */
+function noteFallback(
+  db: AppDeps['db'],
+  userId: string,
+  text: string,
+  failures: Array<{ provider: CloudTtsProvider; reason: string }>,
+  used: CloudTtsProvider,
+) {
+  const first = failures[0];
+  if (!first) return;
+  recordLog(db, {
+    userId,
+    level: 'warn',
+    category: 'app',
+    message: `Pronunciation: ${CLOUD_TTS[first.provider].label} didn’t work, used ${CLOUD_TTS[used].label}`,
+    details: {
+      context: 'pronunciation',
+      text: text.slice(0, 80),
+      failures: failures.map((f) => `${CLOUD_TTS[f.provider].label}: ${f.reason}`),
+    },
+  });
+}
+
+/** Generates and caches one clip (once, even if asked for twice at the same time). */
+async function generate(
+  deps: AppDeps,
+  hash: string,
+  request: {
+    provider: CloudTtsProvider;
+    apiKey: string;
+    text: string;
+    lang: string;
+    voice: string;
+    timeoutMs: number | undefined;
+  },
+): Promise<void> {
+  const pending = inFlight.get(hash);
+  if (pending) {
+    await pending;
+    return;
+  }
+  const job = (async () => {
+    const { provider, apiKey, text, lang, voice, timeoutMs } = request;
+    let result: Awaited<ReturnType<typeof synthesize>>;
+    if (deps.synthesizeFn) {
+      result = await deps.synthesizeFn({ provider, apiKey, text, lang, voice });
+    } else if (provider === 'edge') {
+      result = await synthesizeEdge({ text, voice });
+    } else {
+      result = await synthesize({
+        provider,
+        text,
+        lang,
+        voice,
+        timeoutMs,
+        model: createSpeechModel({ provider, apiKey, fetch: deps.fetchFn }),
+      });
     }
     const mime = result.mediaType.split(';')[0]?.trim() || 'audio/mpeg';
     const fileName = `${hash}.${EXTENSIONS[mime] ?? 'bin'}`;
     await mkdir(deps.audioDir, { recursive: true });
     await writeFile(join(deps.audioDir, fileName), result.audio);
-    db.insert(ttsCache)
+    deps.db
+      .insert(ttsCache)
       .values({ hash, filePath: fileName, mime, bytes: result.audio.byteLength })
       .onConflictDoNothing()
       .run();
@@ -114,7 +228,7 @@ export async function speakText(
   })();
   inFlight.set(hash, job);
   try {
-    return await job;
+    await job;
   } finally {
     inFlight.delete(hash);
   }

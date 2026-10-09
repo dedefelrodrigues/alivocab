@@ -26,6 +26,8 @@ export type SynthesizeInput = {
   text: string;
   lang: string;
   voice: string;
+  /** Give up after this long (default 60 s). */
+  timeoutMs?: number;
 };
 
 /** Speaks `text` in `lang`; returns the audio bytes and their media type. */
@@ -42,7 +44,7 @@ export async function synthesize(
     instructions: `Read this ${language} text aloud as a native speaker, clearly and at a natural pace for a language learner.`,
     ...(input.provider === 'openai' ? { outputFormat: 'mp3' } : {}),
     maxRetries: 1,
-    abortSignal: AbortSignal.timeout(60_000),
+    abortSignal: AbortSignal.timeout(input.timeoutMs ?? 60_000),
   });
   return { audio: result.audio.uint8Array, mediaType: result.audio.mediaType };
 }

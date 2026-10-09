@@ -61,7 +61,7 @@ export const userProfiles = sqliteTable('user_profiles', {
   defaultWordCount: integer('default_word_count').notNull().default(30),
   /** `'api:<credentialId>' | 'browser' | 'manual'` */
   defaultAiSource: text('default_ai_source').notNull().default('manual'),
-  ttsProvider: text('tts_provider', { enum: TTS_PROVIDERS }).notNull().default('browser'),
+  ttsProvider: text('tts_provider', { enum: TTS_PROVIDERS }).notNull().default('google'),
   ttsVoice: text('tts_voice'),
   dailyNewLimit: integer('daily_new_limit').notNull().default(20),
   dailyReviewLimit: integer('daily_review_limit').notNull().default(200),

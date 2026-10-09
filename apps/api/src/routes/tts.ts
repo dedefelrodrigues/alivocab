@@ -16,8 +16,12 @@ export const ttsRoutes = (deps: AppDeps) =>
       rateLimitPerUser({ max: 300, windowMs: 10 * 60_000 }),
       validate('json', ttsRequestSchema),
       async (c) => {
-        const hash = await speakText(deps, c.get('user').id, c.req.valid('json'));
-        const dto: TtsResultDto = { url: `/api/tts/audio/${hash}` };
+        const spoken = await speakText(deps, c.get('user').id, c.req.valid('json'));
+        const dto: TtsResultDto = {
+          url: `/api/tts/audio/${spoken.hash}`,
+          provider: spoken.provider,
+          fallback: spoken.fallback,
+        };
         return c.json(dto);
       },
     )

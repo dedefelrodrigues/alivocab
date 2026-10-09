@@ -34,8 +34,19 @@ const PROVIDER_LABELS: Record<TtsProvider, { title: string; detail: string }> = 
   },
   edge: { title: 'Microsoft Edge voices', detail: CLOUD_TTS.edge.note },
   openai: { title: 'OpenAI', detail: CLOUD_TTS.openai.note },
-  google: { title: 'Google Gemini', detail: CLOUD_TTS.google.note },
+  google: { title: 'Google Gemini (default)', detail: CLOUD_TTS.google.note },
 };
+
+/** Gemini first: it's the default. */
+const PROVIDER_ORDER: TtsProvider[] = ['google', 'edge', 'openai', 'browser'];
+
+/** What is used when the chosen voices don't work (the server tries Edge, the app the browser). */
+function fallbackText(provider: TtsProvider): string | null {
+  if (provider === 'browser') return null;
+  return provider === 'edge'
+    ? 'If they don’t work, the browser’s voice is used.'
+    : `If ${CLOUD_TTS[provider].label} doesn’t work (no key, rate limit, an error), a Microsoft Edge voice is used, then the browser’s.`;
+}
 
 export function VoiceSection() {
   const { data: me } = useQuery(meQuery);
@@ -61,7 +72,7 @@ export function VoiceSection() {
     >
       <fieldset className="m-0 grid gap-2 border-0 p-0 sm:grid-cols-2">
         <legend className="mb-2 text-sm font-medium">Voices from</legend>
-        {TTS_PROVIDERS.map((p) => (
+        {PROVIDER_ORDER.filter((p) => TTS_PROVIDERS.includes(p)).map((p) => (
           <label
             key={p}
             className={cn(
@@ -89,6 +100,9 @@ export function VoiceSection() {
           </label>
         ))}
       </fieldset>
+      {fallbackText(provider) && (
+        <p className="-mt-2 text-xs text-muted-foreground">{fallbackText(provider)}</p>
+      )}
 
       {provider !== 'browser' && cloudVoices(provider, lang).length === 0 ? (
         <Alert>
@@ -106,7 +120,7 @@ export function VoiceSection() {
                 <a href="#ai" className="underline">
                   AI providers
                 </a>{' '}
-                to use these voices. Until then the browser’s voice is used.
+                to use these voices. Until then Microsoft Edge voices are used.
               </AlertDescription>
             </Alert>
           )}

@@ -341,4 +341,9 @@ export const ttsRequestSchema = z.object({
   voice: z.string().trim().max(60).optional(),
 });
 
-export type TtsResultDto = { url: string };
+export type TtsResultDto = {
+  url: string;
+  /** The provider that spoke (Edge when the learner's choice didn't work). */
+  provider: CloudTtsProvider;
+  fallback: { from: CloudTtsProvider; reason: string } | null;
+};

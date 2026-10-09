@@ -115,6 +115,10 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   `apps/api/src/lib/srs.ts` owns the queue, grading and summary. Every graded interaction must go
   through `gradeCard()`, which writes the review log, the exposure, the counters and the status.
   New words get cards via `createCards()` in `saveWords()`. Manual re-tags call `reseedCards()`.
+- Lessons: `apps/api/src/lib/lessons.ts` builds them from the review queue; which exercise a card
+  gets and how a result maps to a rating live in `packages/core/src/exercises` (pure, used by the
+  web app to check answers). Graded answers still go through `gradeCard()`; extra practice
+  (`mode=practice`) goes through `recordPractice()` and never touches cards.
 - Pictures: everything goes through the picture service (`apps/api/src/lib/pictures`, `deps.pictures`).
   Which picture a user sees is decided only by `resolvePictures()` (hidden → own choice → shared
   default). Downloads must go through `downloadImage()` (SSRF guard, size cap, sharp re-encode).

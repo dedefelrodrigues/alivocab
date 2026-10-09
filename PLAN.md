@@ -31,6 +31,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
 | D21 | Shared-word edits | Dictionary fields (gender, forms, translations, IPA) are editable only while no other user has the word (or by an admin). Notes/mnemonics are always private and editable |
 | D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
+| D24 | Lessons vs. flashcards | Flashcards (self-rated) stay as the quick review. Lessons mix exercises chosen per card and grade the same FSRS cards. Answer checking runs in the browser (core is shared), since grading only affects the learner's own schedule. Extra practice outside the schedule never changes due dates |
 | D23 | Pictures | Optional picture per word from free photo search (Wikimedia Commons and Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
 
 ### Open questions (decide when we reach that phase)
@@ -449,11 +450,25 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 - [x] Pictures on flashcards (recall front + answer side), PWA cache for pictures
 
 ### Phase 4: MCQ, cloze, lessons, stats
-- [ ] Picture exercises: "pick the picture" MCQ and "name what you see" (words with a picture only)
-- [ ] Distractor selection (`core/exercises/mcq`), cloze builder, answer checker (diacritic-aware, Levenshtein ≤ 1 typo tolerance → `Hard`)
-- [ ] On-demand example-sentence generation (cached)
-- [ ] Lesson builder + session summary
-- [ ] Stats page: reviews/day, retention, exposures per word, streak
+- [x] Picture exercises: "pick the picture" MCQ and "name what you see" (words with a picture only)
+- [x] Distractor selection (`core/exercises/choices`), cloze builder, answer checker (diacritic-aware, Levenshtein ≤ 1 typo tolerance → `Hard`)
+- [x] On-demand example-sentence generation (cached)
+- [x] Lesson builder + session summary
+- [x] Stats page: reviews/day, retention, exposures per word, streak
+
+> Notes: lessons (`/lesson`, `GET /api/lessons`) take up to 15 cards from the review queue and pick
+> an exercise per card with `chooseExercise` (`core/exercises/plan.ts`): new words get a flashcard
+> (and come back in the lesson as "pick the meaning"); recognition gets "pick the meaning" or "pick
+> the picture"; recall gets "pick the word" while it is being learned (not in review or stability
+> < 2 d), then "type the word" ("name what you see" when it has a picture, meaning behind a button)
+> or a fill-in sentence. Answers are checked in the browser with `checkAnswer` and graded through
+> `POST /api/review/cards/:id` (exercise type `mcq` / `typing` / `cloze`, answer logged). Rating:
+> wrong → Again; accents, a typo or a hint → Hard; right → Good; typed right in ≤ 5 s on a card that
+> isn't new → Easy (choices are never Easy). When nothing is due, "Practice anyway" runs the weakest
+> words outside the schedule (`mode=practice`, exposures and counters only). Example sentences:
+> theme menu → "Add example sentences" (API key or copy-prompt / paste, `example-sentences@1`,
+> parsed by the vocabulary importer). Stats: `/stats` with period (7/30/90 days) and theme
+> filters.
 
 ### Phase 5: Listening, grammar, drills
 - [ ] Listening script generation (structured: speakers, lines, translation, questions) + player (Web Speech, per-line, speed)

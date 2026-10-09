@@ -2,11 +2,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
+import { activityLogger } from './lib/activity.ts';
 import { adminRoutes } from './routes/admin.ts';
 import { credentialRoutes } from './routes/credentials.ts';
 import { generateRoutes } from './routes/generate.ts';
 import { health } from './routes/health.ts';
 import { lessonRoutes } from './routes/lessons.ts';
+import { logRoutes } from './routes/logs.ts';
 import { materialRoutes } from './routes/materials.ts';
 import { meRoutes } from './routes/me.ts';
 import { mediaRoutes, pictureRoutes } from './routes/pictures.ts';
@@ -27,6 +29,7 @@ export function createApp(deps: AppDeps) {
 
   if (deps.log !== false) app.use(logger());
   app.use(secureHeaders());
+  app.use(activityLogger(deps.db));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
@@ -52,6 +55,7 @@ export function createApp(deps: AppDeps) {
     .route('/materials', materialRoutes(deps))
     .route('/roleplay', roleplayRoutes(deps))
     .route('/stats', statsRoutes(deps))
+    .route('/logs', logRoutes(deps))
     .route('/tts', ttsRoutes(deps))
     .route('/pictures', pictureRoutes(deps))
     .route('/media', mediaRoutes(deps));

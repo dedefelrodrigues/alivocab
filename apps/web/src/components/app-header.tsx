@@ -9,6 +9,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  ScrollText,
   Settings,
   Shield,
   Sun,
@@ -117,6 +118,13 @@ export function AppHeader() {
                 <Settings /> Settings
               </Link>
             </DropdownMenuItem>
+            {me?.profile.advancedMode && (
+              <DropdownMenuItem asChild>
+                <Link to="/log">
+                  <ScrollText /> Activity log
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={signOut}>
               <LogOut /> Sign out
             </DropdownMenuItem>

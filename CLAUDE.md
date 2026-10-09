@@ -127,6 +127,12 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
 - Streaming chat (role-play) uses `streamConversation()` from `packages/ai` and returns its text
   stream as the response; the client reads it with `fetch` (not the Hono RPC client) and parses
   it with `parseRoleplayTurn()` as it arrives. Save turns in `onDone`, never from the client.
+  `onDone` runs before the stream closes; a failure ends the stream with `<stream-error>` (check
+  `turn.error` on the client) and should save nothing.
+- Activity log (Settings → Advanced, `/log`): `activityLogger()` in `lib/activity.ts` records API
+  requests (failures always, everything in advanced mode); AI calls come from `ai_generations`.
+  In the web app, report failures the server can't see (network, streams, audio playback) with
+  `reportProblem()` from `src/lib/activity.ts`. Never log request bodies, passwords or keys.
 - Pronunciation: the web app always calls `speak()` from `src/lib/speech.ts` (never
   `speechSynthesis` directly); cloud audio comes from `POST /api/tts` (`lib/tts.ts`, cached by
   content hash). Tests inject `synthesizeFn` instead of calling providers.

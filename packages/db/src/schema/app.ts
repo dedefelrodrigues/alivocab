@@ -14,6 +14,7 @@ import {
   GENERATION_KINDS,
   IMAGE_PROVIDERS,
   LESSON_KINDS,
+  LOG_LEVELS,
   PARTS_OF_SPEECH,
   STATUS_SOURCES,
   TTS_PROVIDERS,
@@ -71,6 +72,8 @@ export const userProfiles = sqliteTable('user_profiles', {
     .default('system'),
   /** Find a picture automatically for new words that can be pictured. */
   autoPictures: integer('auto_pictures', { mode: 'boolean' }).notNull().default(true),
+  /** Record every request in the activity log and show the Log page. */
+  advancedMode: integer('advanced_mode', { mode: 'boolean' }).notNull().default(false),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -387,3 +390,24 @@ export const ttsCache = sqliteTable('tts_cache', {
   bytes: integer('bytes').notNull(),
   createdAt: createdAt(),
 });
+
+/**
+ * Activity log: API requests (all of them in advanced mode, otherwise only failures) and
+ * problems reported by the web app. AI calls are read from `ai_generations`. Pruned after
+ * `LOG_RETENTION_DAYS`.
+ */
+export const appLogs = sqliteTable(
+  'app_logs',
+  {
+    id: id(),
+    userId: userId(),
+    level: text('level', { enum: LOG_LEVELS }).notNull(),
+    category: text('category', { enum: ['request', 'app'] }).notNull(),
+    message: text('message').notNull(),
+    status: integer('status'),
+    durationMs: integer('duration_ms'),
+    details: text('details_json', { mode: 'json' }).$type<Record<string, unknown>>(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('app_logs_user_idx').on(t.userId, t.createdAt)],
+);

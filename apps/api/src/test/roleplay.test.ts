@@ -1,3 +1,4 @@
+import { parseRoleplayTurn } from '@alivocab/core';
 import { schema } from '@alivocab/db';
 import type { RoleplayDto, Scenario, ThemeSummaryDto } from '@alivocab/shared';
 import { simulateReadableStream } from 'ai';
@@ -31,15 +32,26 @@ function chatModel(answers: string[], prompts: unknown[] = []) {
     doStream: async ({ prompt }) => {
       prompts.push(prompt);
       const text = answers[prompts.length - 1] ?? '';
-      const pieces = text.match(/.{1,7}/gs) ?? [];
+      // "!fail:<message>" streams a few words, then a provider error.
+      const fail = text.startsWith('!fail:') ? text.slice(6) : null;
+      const pieces =
+        (fail ? '<correction>OK</correction><reply>Dzie' : text).match(/.{1,7}/gs) ?? [];
       return {
         stream: simulateReadableStream({
           chunks: [
             { type: 'stream-start', warnings: [] },
             { type: 'text-start', id: 't' },
             ...pieces.map((delta) => ({ type: 'text-delta' as const, id: 't', delta })),
-            { type: 'text-end', id: 't' },
-            { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage },
+            ...(fail
+              ? [{ type: 'error' as const, error: new Error(fail) }]
+              : [
+                  { type: 'text-end' as const, id: 't' },
+                  {
+                    type: 'finish' as const,
+                    finishReason: { unified: 'stop' as const, raw: undefined },
+                    usage,
+                  },
+                ]),
           ],
         }),
       };
@@ -108,7 +120,7 @@ describe('role-play', () => {
       body: { text: 'Poproszę dwa chleb.' },
     });
     await turn.text();
-    await flush();
+    // Saved before the stream closes: no waiting needed.
 
     const saved = (await (
       await ctx.call(`/api/roleplay/${chat.id}`, { cookie: ctx.cookie })
@@ -185,6 +197,44 @@ describe('role-play', () => {
       await ctx.call(`/api/themes/${ctx.theme.id}/materials`, { cookie: ctx.cookie })
     ).json()) as Array<{ kind: string; title: string }>;
     expect(list).toEqual([expect.objectContaining({ kind: 'roleplay', title: 'At the bakery' })]);
+  });
+
+  it('ends a failed turn with an error the client can show, saving nothing', async () => {
+    const ctx = await setup([
+      '!fail:Connection reset',
+      '<correction>OK</correction><explanation></explanation><translation>?</translation>',
+    ]);
+    const chat = (await (
+      await ctx.call(`/api/themes/${ctx.theme.id}/roleplay`, {
+        method: 'POST',
+        cookie: ctx.cookie,
+        body: { scenario },
+      })
+    ).json()) as RoleplayDto;
+    const send = async () =>
+      parseRoleplayTurn(
+        await (
+          await ctx.call(`/api/roleplay/${chat.id}/messages`, {
+            method: 'POST',
+            cookie: ctx.cookie,
+            body: {},
+          })
+        ).text(),
+      );
+
+    expect((await send()).error).toBe('Connection reset');
+    // An answer without a reply fails too, instead of saving half a turn.
+    expect((await send()).error).toMatch(/no reply/);
+
+    const saved = (await (
+      await ctx.call(`/api/roleplay/${chat.id}`, { cookie: ctx.cookie })
+    ).json()) as RoleplayDto;
+    expect(saved.content.messages).toEqual([]);
+    const generations = ctx.db.select().from(schema.aiGenerations).all();
+    expect(generations.map((g) => [g.parsedOk, g.error])).toEqual([
+      [false, 'Connection reset'],
+      [false, expect.stringMatching(/no reply/)],
+    ]);
   });
 
   it('keeps chats private', async () => {

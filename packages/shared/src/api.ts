@@ -24,6 +24,7 @@ export const profileUpdateSchema = z
       .refine((v) => v === 'auto' || getPalette(v) !== undefined, 'Unknown palette'),
     colorMode: z.enum(COLOR_MODES),
     autoPictures: z.boolean(),
+    advancedMode: z.boolean(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, 'Nothing to update');
@@ -42,6 +43,8 @@ export type ProfileDto = {
   colorPalette: string;
   colorMode: (typeof COLOR_MODES)[number];
   autoPictures: boolean;
+  /** Records every request in the activity log and shows the Log page. */
+  advancedMode: boolean;
 };
 
 export type MeDto = {

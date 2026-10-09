@@ -2,6 +2,7 @@ export * from './api.ts';
 export * from './enums.ts';
 export * from './languages.ts';
 export * from './lesson.ts';
+export * from './logs.ts';
 export * from './materials.ts';
 export * from './practice.ts';
 export * from './review.ts';

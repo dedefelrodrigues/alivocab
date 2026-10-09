@@ -36,7 +36,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D25 | Cloud voices | OpenAI and Google Gemini TTS with the learner's own key (no shared paid key); audio cached on disk by content hash and reused across users; browser voices stay the default and the fallback |
 | D26 | Materials | Listening scripts and grammar notes are per-user, per-theme `lessons` rows generated on request (never automatically), from the theme words still being learned. Listening is for exposure and comprehension; it doesn't grade cards |
 | D27 | Translation checking | Free comparison with the stored sentence first; AI only on request ("Ask AI if mine is right"), so practice works without a key and costs nothing by default |
-| D28 | Role-play transport | Plain text streaming with simple tags instead of provider-specific structured streaming, so every provider (and models that ignore the tags) works; turns are saved server-side when complete |
+| D28 | Role-play transport | Plain text streaming with simple tags instead of provider-specific structured streaming, so every provider (and models that ignore the tags) works; turns are saved server-side when complete, before the stream closes; a failed turn ends the stream with `<stream-error>` and saves nothing |
+| D29 | Activity log | Per-user log page (Settings → Advanced). Failed requests and app-side problems are always kept; **advanced mode** also records every request. AI calls are shown from `ai_generations` rather than copied. Kept 14 days. No request bodies are stored |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.

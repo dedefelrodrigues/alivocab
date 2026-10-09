@@ -32,6 +32,7 @@ describe('role-play', () => {
       reply: 'Proszę bardzo. Coś jeszcze?',
       translation: 'Here you are. Anything else?',
       replyStarted: true,
+      error: null,
     });
   });
 
@@ -58,6 +59,21 @@ describe('role-play', () => {
       reply: 'Dzień dobry! W czym mogę pomóc?',
       corrected: null,
       replyStarted: true,
+    });
+  });
+
+  it('reports a failed turn without mistaking the error for a reply', () => {
+    const failed = parseRoleplayTurn(
+      '<correction>OK</correction><reply>Dzień</reply>\n<stream-error>The provider is rate-limiting requests.</stream-error>',
+    );
+    expect(failed).toMatchObject({
+      reply: 'Dzień',
+      error: 'The provider is rate-limiting requests.',
+    });
+    expect(parseRoleplayTurn('\n<stream-error>Timed out</stream-error>')).toMatchObject({
+      reply: '',
+      replyStarted: false,
+      error: 'Timed out',
     });
   });
 

@@ -199,6 +199,7 @@ export async function sendRoleplayMessage(
     credentialId,
   );
 
+  let logged = false;
   return streamConversation({
     model,
     instructions,
@@ -206,6 +207,26 @@ export async function sendRoleplayMessage(
     disableReasoning,
     onDone: (answer, usage) => {
       const turn = parseRoleplayTurn(answer);
+      const log = (error?: string) => {
+        logged = true;
+        logGeneration(db, {
+          userId,
+          provider,
+          model: modelId,
+          promptVersion: ROLEPLAY_PROMPT_VERSION,
+          prompt: text ?? ROLEPLAY_OPENER,
+          rawOutput: answer,
+          parsedOk: !error,
+          error: error ?? null,
+          tokensIn: usage.tokensIn,
+          tokensOut: usage.tokensOut,
+        });
+      };
+      if (!turn.reply) {
+        const error = 'The partner’s answer had no reply in it. Send your message again.';
+        log(error);
+        throw new Error(error);
+      }
       const fresh = db.select().from(lessons).where(eq(lessons.id, row.id)).get();
       if (!fresh) return;
       const current = fresh.content as RoleplayContent;
@@ -220,8 +241,7 @@ export async function sendRoleplayMessage(
               : null,
         });
       }
-      if (turn.reply)
-        added.push({ role: 'assistant', text: turn.reply, translation: turn.translation });
+      added.push({ role: 'assistant', text: turn.reply, translation: turn.translation });
       const next: RoleplayContent = { ...current, messages: [...current.messages, ...added] };
       const used = wordsInText(theme, [text ?? '', turn.reply].join('\n'), all);
       const now = new Date();
@@ -255,19 +275,10 @@ export async function sendRoleplayMessage(
           .where(and(eq(userLexemes.userId, userId), inArray(userLexemes.lexemeId, own)))
           .run();
       });
-      logGeneration(db, {
-        userId,
-        provider,
-        model: modelId,
-        promptVersion: ROLEPLAY_PROMPT_VERSION,
-        prompt: text ?? ROLEPLAY_OPENER,
-        rawOutput: answer,
-        parsedOk: !!turn.reply,
-        tokensIn: usage.tokensIn,
-        tokensOut: usage.tokensOut,
-      });
+      log();
     },
-    onFail: (message) =>
+    onFail: (message) => {
+      if (logged) return;
       logGeneration(db, {
         userId,
         provider,
@@ -277,7 +288,8 @@ export async function sendRoleplayMessage(
         rawOutput: null,
         parsedOk: false,
         error: message,
-      }),
+      });
+    },
   });
 }
 

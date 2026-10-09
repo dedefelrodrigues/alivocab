@@ -92,6 +92,8 @@ export type RoleplayTurn = {
   translation: string | null;
   /** The reply has started (show it while streaming). */
   replyStarted: boolean;
+  /** Set when the turn failed (the server ends the stream with `<stream-error>`). */
+  error: string | null;
 };
 
 /** The text inside `<tag>…</tag>`, or what has arrived so far if it isn't closed yet. */
@@ -109,7 +111,11 @@ function tagText(text: string, tag: string): { value: string; open: boolean } | 
  * Reads a partner answer, complete or still streaming. Models that ignore the tags still work:
  * their whole answer is taken as the reply.
  */
-export function parseRoleplayTurn(text: string): RoleplayTurn {
+export function parseRoleplayTurn(input: string): RoleplayTurn {
+  // `<stream-error>` is STREAM_ERROR_TAG from @alivocab/ai, appended when the turn failed.
+  const failure = tagText(input, 'stream-error');
+  const at = input.indexOf('<stream-error>');
+  const text = at < 0 ? input : input.slice(0, at);
   const correction = tagText(text, 'correction');
   const explanation = tagText(text, 'explanation');
   const reply = tagText(text, 'reply');
@@ -122,5 +128,6 @@ export function parseRoleplayTurn(text: string): RoleplayTurn {
     reply: hasTags ? (reply?.value ?? '') : text.replace(/<[^>]*>/g, '').trim(),
     translation: translation?.value || null,
     replyStarted: hasTags ? !!reply : !!text.trim(),
+    error: failure ? failure.value || 'The partner didn’t answer.' : null,
   };
 }

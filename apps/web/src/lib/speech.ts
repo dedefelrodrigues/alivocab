@@ -5,6 +5,7 @@
  */
 import type { TtsProvider } from '@alivocab/shared';
 import { toast } from 'sonner';
+import { reportProblem } from './activity.ts';
 import { api, errorMessage, unwrap } from './api.ts';
 
 type SpeechConfig = { provider: TtsProvider; voice: string | null };
@@ -81,6 +82,11 @@ export async function speak(
       player.play().catch(reject);
     });
   } catch (err) {
+    reportProblem(`Cloud voice failed: ${errorMessage(err)}`, {
+      level: 'warn',
+      context: 'pronunciation',
+      details: { provider: config.provider, lang, text: text.slice(0, 80) },
+    });
     if (!warned) {
       warned = true;
       toast.error(`Cloud voice unavailable (${errorMessage(err)}). Using the browser’s voice.`);

@@ -22,6 +22,8 @@ export type ExerciseContext = {
   hasCloze: boolean;
   /** The word has grammatical forms to drill. */
   hasDrill?: boolean;
+  /** The word has an example sentence short enough to build from shuffled words. */
+  hasSentence?: boolean;
   rand?: () => number;
 };
 
@@ -48,6 +50,7 @@ export function chooseExercise(ctx: ExerciseContext): ExerciseKind {
   const kinds: ExerciseKind[] = [
     ...(ctx.hasCloze ? (['cloze'] as const) : []),
     ...(ctx.hasDrill ? (['drill'] as const) : []),
+    ...(ctx.hasSentence ? (['build_sentence'] as const) : []),
     'type_word',
   ];
   return kinds[Math.floor(rand() * kinds.length)] ?? 'type_word';
@@ -82,9 +85,11 @@ export function ratingFor(result: {
 /** The `exercise_type` recorded in review logs and exposures. */
 export function exerciseTypeOf(
   kind: ExerciseKind,
-): 'flashcard' | 'mcq' | 'typing' | 'cloze' | 'drill' {
+): 'flashcard' | 'mcq' | 'typing' | 'cloze' | 'drill' | 'sentence' | 'translation' {
   if (kind === 'intro') return 'flashcard';
   if (kind === 'drill') return 'drill';
+  if (kind === 'build_sentence') return 'sentence';
+  if (kind === 'translate') return 'translation';
   if (kind === 'cloze') return 'cloze';
   if (kind === 'type_word') return 'typing';
   return 'mcq';

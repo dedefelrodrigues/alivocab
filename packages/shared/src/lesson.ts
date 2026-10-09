@@ -11,6 +11,8 @@ export const LESSON_MODES = [
   'practice',
   /** Grammar drills (forms) on words that have them, outside the schedule like `practice`. */
   'drill',
+  /** Translating example sentences into the target language, outside the schedule. */
+  'translate',
 ] as const;
 export type LessonMode = (typeof LESSON_MODES)[number];
 
@@ -40,6 +42,10 @@ export type LessonItemDto = {
   options: LessonOptionDto[] | null;
   /** The blanked sentence for `cloze`. */
   cloze: { before: string; answer: string; after: string; translation: string | null } | null;
+  /** Shuffled words of an example sentence for `build_sentence`. */
+  sentence: { tokens: string[]; answer: string[]; end: string; translation: string | null } | null;
+  /** The sentence to translate for `translate` (source in the native language). */
+  translate: { source: string; reference: string } | null;
   /** The form to produce for `drill`. */
   drill: {
     formKey: string;

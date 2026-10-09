@@ -3,6 +3,7 @@ import { acceptedAnswers, checkAnswer, editDistance } from './answer.ts';
 import { buildCloze, type ChoiceCandidate, pickDistractors, shuffle } from './choices.ts';
 import { pickDrill } from './drills.ts';
 import { chooseExercise, ratingFor } from './plan.ts';
+import { buildScramble, checkTranslation, scrambleCorrect } from './sentences.ts';
 
 /** Deterministic pseudo-random numbers for tests. */
 function seeded(seed = 1) {
@@ -261,5 +262,38 @@ describe('chooseExercise with drills', () => {
     expect(chooseExercise({ ...ctx, rand: () => 0.5 })).toBe('drill');
     expect(chooseExercise({ ...ctx, rand: () => 0.9 })).toBe('type_word');
     expect(ratingFor({ verdict: 'correct', kind: 'drill', responseMs: 2000 })).toBe('easy');
+  });
+});
+
+describe('sentence building', () => {
+  it('shuffles the words of a sentence, keeping the final punctuation apart', () => {
+    const s = buildScramble('Dzień dobry, poproszę kawę!', seeded(2));
+    expect(s?.answer).toEqual(['Dzień', 'dobry', 'poproszę', 'kawę']);
+    expect(s?.end).toBe('!');
+    expect(s?.tokens.slice().sort()).toEqual(['Dzień', 'dobry', 'kawę', 'poproszę']);
+    expect(s?.tokens).not.toEqual(s?.answer);
+  });
+
+  it('skips sentences that are too short or too long', () => {
+    expect(buildScramble('Jem jabłko.')).toBeNull();
+    expect(buildScramble('a b c d e f g h i j k')).toBeNull();
+  });
+
+  it('accepts the right order, also with repeated words', () => {
+    const answer = ['to', 'jest', 'to'];
+    expect(scrambleCorrect(['to', 'jest', 'to'], answer, 'pl')).toBe(true);
+    expect(scrambleCorrect(['jest', 'to', 'to'], answer, 'pl')).toBe(false);
+  });
+});
+
+describe('checkTranslation', () => {
+  const ref = 'Poproszę szklankę wody.';
+  it('grades exact, accent-only and one-word differences', () => {
+    expect(checkTranslation('poproszę szklankę wody', ref, 'pl')).toBe('match');
+    expect(checkTranslation('Poprosze szklanke wody.', ref, 'pl')).toBe('accents');
+    expect(checkTranslation('Poproszę szklankę soku.', ref, 'pl')).toBe('close');
+    expect(checkTranslation('Poproszę wody.', ref, 'pl')).toBe('close');
+    expect(checkTranslation('Chcę wodę.', ref, 'pl')).toBe('different');
+    expect(checkTranslation('', ref, 'pl')).toBe('different');
   });
 });

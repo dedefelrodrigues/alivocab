@@ -35,6 +35,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D24 | Lessons vs. flashcards | Flashcards (self-rated) stay as the quick review. Lessons mix exercises chosen per card and grade the same FSRS cards. Answer checking runs in the browser (core is shared), since grading only affects the learner's own schedule. Extra practice outside the schedule never changes due dates |
 | D25 | Cloud voices | OpenAI and Google Gemini TTS with the learner's own key (no shared paid key); audio cached on disk by content hash and reused across users; browser voices stay the default and the fallback |
 | D26 | Materials | Listening scripts and grammar notes are per-user, per-theme `lessons` rows generated on request (never automatically), from the theme words still being learned. Listening is for exposure and comprehension; it doesn't grade cards |
+| D27 | Translation checking | Free comparison with the stored sentence first; AI only on request ("Ask AI if mine is right"), so practice works without a key and costs nothing by default |
+| D28 | Role-play transport | Plain text streaming with simple tags instead of provider-specific structured streaming, so every provider (and models that ignore the tags) works; turns are saved server-side when complete |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -495,9 +497,24 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > script or reading a note counts once as an exposure of its words.
 
 ### Phase 6: Sentence building, translation, role-play
-- [ ] Scrambled-sentence exercise
-- [ ] AI-graded translation (structured feedback)
-- [ ] Role-play chat with streaming (SSE), vocabulary-constrained system prompt, inline corrections
+- [x] Scrambled-sentence exercise
+- [x] AI-graded translation (structured feedback)
+- [x] Role-play chat with streaming, vocabulary-constrained system prompt, inline corrections
+
+> Notes: **Sentence building** ("put the words in order", `buildScramble`) uses stored example
+> sentences of 3–10 words and joins cloze, drill and typing for established recall cards.
+> **Translation** (D27) is a practice mode (`mode=translate`, outside the schedule): the learner
+> translates an example sentence from their language; `checkTranslation` compares it with the
+> stored sentence for free (match / accents / one word off / different), and "Ask AI if mine is
+> right" (`POST /api/lessons/check-translation`, `translation-check@1`, default API key) explains
+> with corrections. **Role-play** (D28): AI suggests three situations (`roleplay-scenarios@1`) or
+> the learner writes one; the partner (`roleplay@1`) speaks at the chosen level, uses the theme
+> words and answers in tags (`<correction>`, `<explanation>`, `<reply>`, `<translation>`) read by
+> `parseRoleplayTurn` while the plain-text stream arrives (`streamConversation`, AI SDK
+> `streamText`). Turns are saved when the stream ends (corrections attached to the learner's
+> message); chats are `lessons` rows of kind `roleplay`, listed with the theme's materials, at most
+> 40 learner turns. Replies are read aloud; the learner can dictate (Web Speech recognition).
+> "End and review" lists all corrections. Role-play needs an API key (no copy-paste path).
 
 ### Phase 7: Hosting & operations
 - [ ] Multi-stage Dockerfile (build → slim runtime), `docker-compose.yml` with Caddy (auto-HTTPS), `/data` volume

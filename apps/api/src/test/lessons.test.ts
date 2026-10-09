@@ -1,6 +1,7 @@
 import { CARD_STATE } from '@alivocab/core';
 import { schema } from '@alivocab/db';
 import type { LessonDto, ThemeSummaryDto, WordStatus } from '@alivocab/shared';
+import { MockLanguageModelV4 } from 'ai/test';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { buildLesson } from '../lib/lessons.ts';
@@ -238,5 +239,89 @@ describe('grammar drills', () => {
     const body = (await res.json()) as LessonDto;
     expect(body.mode).toBe('drill');
     expect(body.items.map((i) => [i.card.lemma, i.kind])).toEqual([['kot', 'drill']]);
+  });
+});
+
+describe('sentences and translation', () => {
+  const words = [
+    w('jabłko', 'unknown', {
+      examples: [
+        { text: 'Jem czerwone jabłko.', translation: 'I eat a red apple.', cloze: 'jabłko' },
+      ],
+    }),
+    ...['pies', 'dom', 'las'].map((l) => w(l)),
+  ];
+
+  it('builds sentences from shuffled example words in lessons', async () => {
+    const ctx = await setup(words);
+    establish(ctx, 'jabłko', 'recall');
+    // [cloze, build_sentence, type_word] → rand 0.5 picks build_sentence
+    const item = lesson(ctx, () => 0.5).items.find((i) => i.card.lemma === 'jabłko');
+    expect(item?.kind).toBe('build_sentence');
+    expect(item?.sentence).toMatchObject({
+      answer: ['Jem', 'czerwone', 'jabłko'],
+      end: '.',
+      translation: 'I eat a red apple.',
+    });
+    expect(item?.sentence?.tokens.slice().sort()).toEqual(['Jem', 'czerwone', 'jabłko']);
+  });
+
+  it('offers translation practice from example sentences', async () => {
+    const ctx = await setup(words);
+    establish(ctx, 'jabłko', 'recognition');
+    establish(ctx, 'pies', 'recognition');
+    const body = (await (
+      await ctx.call(`/api/lessons?themeId=${ctx.theme.id}&mode=translate`, { cookie: ctx.cookie })
+    ).json()) as LessonDto;
+    expect(body.items.map((i) => [i.kind, i.translate])).toEqual([
+      ['translate', { source: 'I eat a red apple.', reference: 'Jem czerwone jabłko.' }],
+    ]);
+  });
+
+  it('asks the AI to check a translation with the default key', async () => {
+    const feedback = {
+      verdict: 'acceptable',
+      corrected: 'Jem czerwone jabłko.',
+      explanation: 'Use "jabłko" (accusative = nominative for neuter nouns).',
+      mistakes: [{ wrong: 'jabłka', right: 'jabłko', note: 'Neuter accusative' }],
+    };
+    const ctx = createTestApp({
+      modelFactory: () =>
+        new MockLanguageModelV4({
+          doGenerate: async () => ({
+            content: [{ type: 'text', text: JSON.stringify(feedback) }],
+            finishReason: { unified: 'stop', raw: undefined },
+            usage: {
+              inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 1, text: 1, reasoning: undefined },
+            },
+            warnings: [],
+          }),
+        }),
+    });
+    const cookie = await ctx.createUser('a@test.dev');
+    const body = {
+      source: 'I eat a red apple.',
+      reference: 'Jem czerwone jabłko.',
+      answer: 'Jem czerwone jabłka.',
+      lang: 'pl',
+      nativeLang: 'en',
+    };
+    const none = await ctx.call('/api/lessons/check-translation', { method: 'POST', cookie, body });
+    expect(none.status).toBe(400);
+
+    await ctx.call('/api/credentials', {
+      method: 'POST',
+      cookie,
+      body: { provider: 'anthropic', label: 'Claude', apiKey: 'sk-ant-test-1234' },
+    });
+    const res = await ctx.call('/api/lessons/check-translation', { method: 'POST', cookie, body });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(feedback);
+    expect(ctx.db.select().from(schema.aiGenerations).get()).toMatchObject({
+      kind: 'sentence_grade',
+      parsedOk: true,
+      promptVersion: 'translation-check@1',
+    });
   });
 });

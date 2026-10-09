@@ -2,9 +2,12 @@ import {
   type AnswerVerdict,
   acceptedAnswers,
   checkAnswer,
+  checkTranslation,
   exerciseTypeOf,
   ratingFor,
+  scrambleCorrect,
   shuffle,
+  type TranslationCheck,
 } from '@alivocab/core';
 import {
   type GradeResultDto,
@@ -25,6 +28,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ChoiceExercise } from '@/features/lesson/ChoiceExercise';
 import { Feedback } from '@/features/lesson/Feedback';
 import { emptyStats, type LessonStats, LessonSummary } from '@/features/lesson/LessonSummary';
+import { SentenceExercise } from '@/features/lesson/SentenceExercise';
+import { TranslationResult } from '@/features/lesson/TranslationResult';
 import { expectedAnswer, TypeExercise } from '@/features/lesson/TypeExercise';
 import { Flashcard } from '@/features/review/Flashcard';
 import { RATING_KEYS, RatingBar } from '@/features/review/RatingBar';
@@ -79,7 +84,11 @@ function LessonPage() {
           )}
         </Button>
         <h1 className="flex-1 truncate text-xl font-bold tracking-tight">
-          {mode === 'practice' ? 'Practice' : mode === 'drill' ? 'Grammar drill' : 'Lesson'}
+          {
+            { due: 'Lesson', practice: 'Practice', drill: 'Grammar drill', translate: 'Translate' }[
+              mode
+            ]
+          }
           {theme ? `: ${theme.name}` : ''}
         </h1>
       </div>
@@ -153,6 +162,16 @@ type Answer = {
   given?: string;
   expected?: string;
   chosen?: string;
+  /** Free check result for `translate` exercises. */
+  translation?: TranslationCheck;
+};
+
+/** How a free translation check counts in the session (practice only). */
+const TRANSLATION_VERDICT: Record<TranslationCheck, AnswerVerdict> = {
+  match: 'correct',
+  accents: 'accents',
+  close: 'typo',
+  different: 'wrong',
 };
 
 function Session({
@@ -294,8 +313,30 @@ function Session({
     sayIt(item.card.lemma, item.card.lang);
   };
 
+  const build = (words: string[]) => {
+    if (!item?.sentence || answer) return;
+    const verdict: AnswerVerdict = scrambleCorrect(words, item.sentence.answer, item.card.lang)
+      ? 'correct'
+      : 'wrong';
+    record(item, verdict, ratingFor({ verdict, kind: item.kind }), words.join(' '));
+    setAnswer({
+      verdict,
+      given: words.join(' '),
+      expected: `${item.sentence.answer.join(' ')}${item.sentence.end}`,
+    });
+    sayIt(`${item.sentence.answer.join(' ')}${item.sentence.end}`, item.card.lang);
+  };
+
   const type = (text: string, hinted: boolean) => {
     if (!item || answer) return;
+    if (item.kind === 'translate' && item.translate && text.trim()) {
+      const check = checkTranslation(text, item.translate.reference, item.card.lang);
+      const verdict = TRANSLATION_VERDICT[check];
+      record(item, verdict, ratingFor({ verdict, kind: item.kind, hinted }), text);
+      setAnswer({ verdict, given: text, expected: item.translate.reference, translation: check });
+      sayIt(item.translate.reference, item.card.lang);
+      return;
+    }
     const target = expectedAnswer(item);
     const check = text.trim()
       ? checkAnswer(text, acceptedAnswers([target]), item.card.lang)
@@ -412,7 +453,9 @@ function Session({
         </>
       ) : (
         <div className="rounded-2xl border bg-flashcard-front p-5 shadow-sm sm:p-6">
-          {item.options ? (
+          {item.kind === 'build_sentence' ? (
+            <SentenceExercise key={item.key} item={item} answered={!!answer} onSubmit={build} />
+          ) : item.options ? (
             <ChoiceExercise
               key={item.key}
               item={item}
@@ -427,12 +470,16 @@ function Session({
 
       {answer && (
         <>
-          <Feedback
-            verdict={answer.verdict}
-            card={item.card}
-            given={answer.given}
-            expected={answer.expected}
-          />
+          {answer.translation && answer.given ? (
+            <TranslationResult item={item} given={answer.given} check={answer.translation} />
+          ) : (
+            <Feedback
+              verdict={answer.verdict}
+              card={item.card}
+              given={answer.given}
+              expected={answer.expected}
+            />
+          )}
           <Button className="h-12 w-full text-base" onClick={next}>
             Continue <span className="hidden text-xs opacity-70 sm:inline">(Enter)</span>
           </Button>

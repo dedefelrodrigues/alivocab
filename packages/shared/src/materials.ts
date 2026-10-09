@@ -101,7 +101,8 @@ export const materialGenerateSchema = z.object({
 
 export type MaterialSummaryDto = {
   id: string;
-  kind: MaterialKind;
+  /** Role-play chats are listed with materials too. */
+  kind: MaterialKind | 'roleplay';
   title: string;
   createdAt: string;
   wordCount: number;
@@ -109,7 +110,7 @@ export type MaterialSummaryDto = {
 
 export type MaterialWordDto = { lexemeId: string; lemma: string; translations: string[] };
 
-export type MaterialDto = MaterialSummaryDto & {
+export type MaterialDto = Omit<MaterialSummaryDto, 'kind'> & {
   themeId: string | null;
   lang: string;
   nativeLang: string;

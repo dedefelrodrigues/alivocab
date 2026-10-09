@@ -14,6 +14,8 @@ import {
   materialGenerateSchema,
   materialImportSchema,
   materialPromptSchema,
+  roleplayStartSchema,
+  roleplaySuggestSchema,
   saveWordsSchema,
   type ThemeDetailDto,
   themeUpdateSchema,
@@ -42,6 +44,7 @@ import {
 } from '../lib/materials.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
+import { startRoleplay, suggestScenarios } from '../lib/roleplay.ts';
 import { validate } from '../lib/validate.ts';
 import {
   findOwnedTheme,
@@ -423,6 +426,28 @@ export const themeRoutes = (deps: AppDeps) => {
           return c.json(saveMaterial(db, userId, theme, kind, parsed.content, generationId));
         },
       )
+      // Role-play: AI-suggested scenarios, then a chat (continued under /api/roleplay/:id).
+      .post(
+        '/:id/roleplay/suggest',
+        rateLimitPerUser({ max: 20, windowMs: 10 * 60_000 }),
+        validate('json', roleplaySuggestSchema),
+        async (c) => {
+          const userId = c.get('user').id;
+          const theme = findOwnedTheme(db, userId, c.req.param('id'));
+          const scenarios = await suggestScenarios(
+            deps,
+            userId,
+            theme,
+            c.req.valid('json').credentialId,
+          );
+          return c.json({ scenarios });
+        },
+      )
+      .post('/:id/roleplay', validate('json', roleplayStartSchema), (c) => {
+        const userId = c.get('user').id;
+        const theme = findOwnedTheme(db, userId, c.req.param('id'));
+        return c.json(startRoleplay(deps, userId, theme, c.req.valid('json')));
+      })
       // Retry pictures for every word in the theme that still has none.
       .post('/:id/pictures', (c) => {
         const theme = findOwnedTheme(db, c.get('user').id, c.req.param('id'));

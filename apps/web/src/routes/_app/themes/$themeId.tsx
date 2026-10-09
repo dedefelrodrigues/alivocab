@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MaterialsCard } from '@/features/materials/MaterialsCard';
 import { Attribution } from '@/features/pictures/Attribution';
 import { PicturePickerDialog } from '@/features/pictures/PicturePickerDialog';
 import { WordThumb } from '@/features/pictures/WordThumb';
@@ -240,6 +241,8 @@ function ThemePage() {
           <Plus /> Add a word
         </Button>
       </div>
+
+      <MaterialsCard themeId={theme.id} disabled={!theme.wordCount} />
 
       <div className="space-y-3">
         <div className="relative">

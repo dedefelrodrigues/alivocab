@@ -18,6 +18,7 @@ import { Route as AppLessonRouteImport } from './routes/_app/lesson'
 import { Route as AppReviewRouteImport } from './routes/_app/review'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatsRouteImport } from './routes/_app/stats'
+import { Route as AppMaterialsMaterialIdRouteImport } from './routes/_app/materials/$materialId'
 import { Route as AppThemesIndexRouteImport } from './routes/_app/themes/index'
 import { Route as AppThemesThemeIdRouteImport } from './routes/_app/themes/$themeId'
 import { Route as AppThemesNewRouteImport } from './routes/_app/themes/new'
@@ -66,6 +67,11 @@ const AppStatsRoute = AppStatsRouteImport.update({
   path: '/stats',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMaterialsMaterialIdRoute = AppMaterialsMaterialIdRouteImport.update({
+  id: '/materials/$materialId',
+  path: '/materials/$materialId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppThemesIndexRoute = AppThemesIndexRouteImport.update({
   id: '/themes/',
   path: '/themes/',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/review': typeof AppReviewRoute
   '/settings': typeof AppSettingsRoute
   '/stats': typeof AppStatsRoute
+  '/materials/$materialId': typeof AppMaterialsMaterialIdRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
   '/themes/': typeof AppThemesIndexRoute
@@ -104,6 +111,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRoute
   '/stats': typeof AppStatsRoute
   '/': typeof AppIndexRoute
+  '/materials/$materialId': typeof AppMaterialsMaterialIdRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
   '/themes': typeof AppThemesIndexRoute
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRoute
   '/_app/stats': typeof AppStatsRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/materials/$materialId': typeof AppMaterialsMaterialIdRoute
   '/_app/themes/$themeId': typeof AppThemesThemeIdRoute
   '/_app/themes/new': typeof AppThemesNewRoute
   '/_app/themes/': typeof AppThemesIndexRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/review'
     | '/settings'
     | '/stats'
+    | '/materials/$materialId'
     | '/themes/$themeId'
     | '/themes/new'
     | '/themes/'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stats'
     | '/'
+    | '/materials/$materialId'
     | '/themes/$themeId'
     | '/themes/new'
     | '/themes'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/stats'
     | '/_app/'
+    | '/_app/materials/$materialId'
     | '/_app/themes/$themeId'
     | '/_app/themes/new'
     | '/_app/themes/'
@@ -237,6 +249,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStatsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/materials/$materialId': {
+      id: '/_app/materials/$materialId'
+      path: '/materials/$materialId'
+      fullPath: '/materials/$materialId'
+      preLoaderRoute: typeof AppMaterialsMaterialIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/themes/': {
       id: '/_app/themes/'
       path: '/themes'
@@ -268,6 +287,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatsRoute: typeof AppStatsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppMaterialsMaterialIdRoute: typeof AppMaterialsMaterialIdRoute
   AppThemesThemeIdRoute: typeof AppThemesThemeIdRoute
   AppThemesNewRoute: typeof AppThemesNewRoute
   AppThemesIndexRoute: typeof AppThemesIndexRoute
@@ -280,6 +300,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppStatsRoute: AppStatsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppMaterialsMaterialIdRoute: AppMaterialsMaterialIdRoute,
   AppThemesThemeIdRoute: AppThemesThemeIdRoute,
   AppThemesNewRoute: AppThemesNewRoute,
   AppThemesIndexRoute: AppThemesIndexRoute,

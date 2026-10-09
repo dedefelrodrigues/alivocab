@@ -93,3 +93,16 @@ export const statsQuery = (themeId: string | undefined, days: number) =>
       ),
     placeholderData: (previous) => previous,
   });
+
+export const materialsQuery = (themeId: string) =>
+  queryOptions({
+    queryKey: ['themes', themeId, 'materials'],
+    queryFn: () => unwrap(api.themes[':id'].materials.$get({ param: { id: themeId } })),
+  });
+
+export const materialQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['materials', id],
+    queryFn: () => unwrap(api.materials[':id'].$get({ param: { id } })),
+    staleTime: Number.POSITIVE_INFINITY,
+  });

@@ -106,3 +106,9 @@ export const materialQuery = (id: string) =>
     queryFn: () => unwrap(api.materials[':id'].$get({ param: { id } })),
     staleTime: Number.POSITIVE_INFINITY,
   });
+
+export const roleplayQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['roleplay', id],
+    queryFn: () => unwrap(api.roleplay[':id'].$get({ param: { id } })),
+  });

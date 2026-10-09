@@ -19,6 +19,7 @@ import { Route as AppReviewRouteImport } from './routes/_app/review'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatsRouteImport } from './routes/_app/stats'
 import { Route as AppMaterialsMaterialIdRouteImport } from './routes/_app/materials/$materialId'
+import { Route as AppRoleplayChatIdRouteImport } from './routes/_app/roleplay/$chatId'
 import { Route as AppThemesIndexRouteImport } from './routes/_app/themes/index'
 import { Route as AppThemesThemeIdRouteImport } from './routes/_app/themes/$themeId'
 import { Route as AppThemesNewRouteImport } from './routes/_app/themes/new'
@@ -72,6 +73,11 @@ const AppMaterialsMaterialIdRoute = AppMaterialsMaterialIdRouteImport.update({
   path: '/materials/$materialId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRoleplayChatIdRoute = AppRoleplayChatIdRouteImport.update({
+  id: '/roleplay/$chatId',
+  path: '/roleplay/$chatId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppThemesIndexRoute = AppThemesIndexRouteImport.update({
   id: '/themes/',
   path: '/themes/',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/stats': typeof AppStatsRoute
   '/materials/$materialId': typeof AppMaterialsMaterialIdRoute
+  '/roleplay/$chatId': typeof AppRoleplayChatIdRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
   '/themes/': typeof AppThemesIndexRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/stats': typeof AppStatsRoute
   '/': typeof AppIndexRoute
   '/materials/$materialId': typeof AppMaterialsMaterialIdRoute
+  '/roleplay/$chatId': typeof AppRoleplayChatIdRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
   '/themes': typeof AppThemesIndexRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/_app/stats': typeof AppStatsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/materials/$materialId': typeof AppMaterialsMaterialIdRoute
+  '/_app/roleplay/$chatId': typeof AppRoleplayChatIdRoute
   '/_app/themes/$themeId': typeof AppThemesThemeIdRoute
   '/_app/themes/new': typeof AppThemesNewRoute
   '/_app/themes/': typeof AppThemesIndexRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stats'
     | '/materials/$materialId'
+    | '/roleplay/$chatId'
     | '/themes/$themeId'
     | '/themes/new'
     | '/themes/'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/stats'
     | '/'
     | '/materials/$materialId'
+    | '/roleplay/$chatId'
     | '/themes/$themeId'
     | '/themes/new'
     | '/themes'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/_app/stats'
     | '/_app/'
     | '/_app/materials/$materialId'
+    | '/_app/roleplay/$chatId'
     | '/_app/themes/$themeId'
     | '/_app/themes/new'
     | '/_app/themes/'
@@ -256,6 +268,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMaterialsMaterialIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/roleplay/$chatId': {
+      id: '/_app/roleplay/$chatId'
+      path: '/roleplay/$chatId'
+      fullPath: '/roleplay/$chatId'
+      preLoaderRoute: typeof AppRoleplayChatIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/themes/': {
       id: '/_app/themes/'
       path: '/themes'
@@ -288,6 +307,7 @@ interface AppRouteChildren {
   AppStatsRoute: typeof AppStatsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppMaterialsMaterialIdRoute: typeof AppMaterialsMaterialIdRoute
+  AppRoleplayChatIdRoute: typeof AppRoleplayChatIdRoute
   AppThemesThemeIdRoute: typeof AppThemesThemeIdRoute
   AppThemesNewRoute: typeof AppThemesNewRoute
   AppThemesIndexRoute: typeof AppThemesIndexRoute
@@ -301,6 +321,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppStatsRoute: AppStatsRoute,
   AppIndexRoute: AppIndexRoute,
   AppMaterialsMaterialIdRoute: AppMaterialsMaterialIdRoute,
+  AppRoleplayChatIdRoute: AppRoleplayChatIdRoute,
   AppThemesThemeIdRoute: AppThemesThemeIdRoute,
   AppThemesNewRoute: AppThemesNewRoute,
   AppThemesIndexRoute: AppThemesIndexRoute,

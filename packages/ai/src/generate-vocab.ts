@@ -36,6 +36,58 @@ export type BatchResult = {
 const INSTRUCTIONS =
   'You are a precise language-teaching assistant. Follow the requested output format exactly and output nothing else.';
 
+export type AnswerOptions = {
+  model: LanguageModel;
+  prompt: string;
+  maxOutputTokens: number;
+  timeoutMs?: number;
+  /** See `BatchOptions.disableReasoning`. */
+  disableReasoning?: boolean;
+  /** Ends the error shown when reasoning used the whole budget ("…returned no words."). */
+  emptyHint?: string;
+};
+
+/**
+ * One model call with the app's instructions. Retries once without the "no reasoning" option if
+ * the model rejects it, and turns an empty answer into a clear error.
+ */
+export async function generateAnswer(
+  opts: AnswerOptions,
+): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
+  const call = (reasoning: 'none' | undefined) =>
+    generateText({
+      model: opts.model,
+      instructions: INSTRUCTIONS,
+      prompt: opts.prompt,
+      temperature: 0.7,
+      maxOutputTokens: opts.maxOutputTokens,
+      maxRetries: 1,
+      timeout: opts.timeoutMs ?? 180_000,
+      ...(reasoning ? { reasoning } : {}),
+    });
+  let response: Awaited<ReturnType<typeof call>>;
+  try {
+    response = await call(opts.disableReasoning ? 'none' : undefined);
+  } catch (err) {
+    // Some models reject "no reasoning"; fall back to their default once.
+    if (!opts.disableReasoning || !APICallError.isInstance(err) || err.statusCode !== 400)
+      throw err;
+    response = await call(undefined);
+  }
+  if (!response.text.trim()) {
+    throw new Error(
+      response.finishReason === 'length'
+        ? `The model used its whole answer budget on reasoning and ${opts.emptyHint ?? 'returned nothing. Try a non-reasoning model.'}`
+        : `The model returned an empty answer (finish reason: ${response.finishReason}).`,
+    );
+  }
+  return {
+    text: response.text,
+    tokensIn: response.usage.inputTokens ?? 0,
+    tokensOut: response.usage.outputTokens ?? 0,
+  };
+}
+
 /**
  * Generates a word list in sequential batches, feeding each batch's lemmas into the next
  * prompt's avoid list. Stops early when a batch adds nothing new.
@@ -62,36 +114,18 @@ export async function generateInBatches(opts: BatchOptions): Promise<BatchResult
 
     let text: string;
     try {
-      const call = (reasoning: 'none' | undefined) =>
-        generateText({
-          model: opts.model,
-          instructions: INSTRUCTIONS,
-          prompt,
-          temperature: 0.7,
-          maxOutputTokens: Math.min(8_000, 300 * count + 600),
-          maxRetries: 1,
-          timeout: opts.timeoutMs ?? 180_000,
-          ...(reasoning ? { reasoning } : {}),
-        });
-      let response: Awaited<ReturnType<typeof call>>;
-      try {
-        response = await call(opts.disableReasoning ? 'none' : undefined);
-      } catch (err) {
-        // Some models reject "no reasoning"; fall back to their default once.
-        if (!opts.disableReasoning || !APICallError.isInstance(err) || err.statusCode !== 400)
-          throw err;
-        response = await call(undefined);
-      }
-      text = response.text;
-      result.tokensIn += response.usage.inputTokens ?? 0;
-      result.tokensOut += response.usage.outputTokens ?? 0;
-      if (!text.trim()) {
-        throw new Error(
-          response.finishReason === 'length'
-            ? 'The model used its whole answer budget on reasoning and returned no words. Try a non-reasoning model (e.g. deepseek-chat) or fewer words.'
-            : `The model returned an empty answer (finish reason: ${response.finishReason}).`,
-        );
-      }
+      const answer = await generateAnswer({
+        model: opts.model,
+        prompt,
+        maxOutputTokens: Math.min(8_000, 300 * count + 600),
+        timeoutMs: opts.timeoutMs,
+        disableReasoning: opts.disableReasoning,
+        emptyHint:
+          'returned no words. Try a non-reasoning model (e.g. deepseek-chat) or fewer words.',
+      });
+      text = answer.text;
+      result.tokensIn += answer.tokensIn;
+      result.tokensOut += answer.tokensOut;
     } catch (err) {
       // Keep what earlier batches produced; only fail outright on the first call.
       if (!result.words.length) throw err;

@@ -67,7 +67,9 @@ describe('lessons', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as LessonDto;
     expect(body.items).toHaveLength(5);
-    expect(body.items.every((i) => i.kind === 'intro' && i.options === null)).toBe(true);
+    expect(body.items.every((i) => i.kind === 'intro')).toBe(true);
+    // Meaning options ride along, for when the word comes back later in the lesson.
+    expect(body.items[0]?.options).toHaveLength(4);
   });
 
   it('offers four distinct options including the right one for recognition', async () => {

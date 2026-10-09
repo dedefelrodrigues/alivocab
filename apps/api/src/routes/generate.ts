@@ -1,4 +1,4 @@
-import { createModel, describeAiError, generateInBatches, resolveModelId } from '@alivocab/ai';
+import { describeAiError, generateInBatches } from '@alivocab/ai';
 import { buildVocabPrompt, parseVocabulary, VOCAB_PROMPT_VERSION } from '@alivocab/core';
 import { schema } from '@alivocab/db';
 import {
@@ -10,8 +10,7 @@ import {
 } from '@alivocab/shared';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { decryptKey, findOwnedCredential } from '../lib/credentials.ts';
-import { assertPublicUrl } from '../lib/net.ts';
+import { openModel } from '../lib/ai-model.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
@@ -22,8 +21,7 @@ import type { AppDeps, AuthedEnv } from '../types.ts';
 const BATCH_SIZE = 25;
 
 export const generateRoutes = (deps: AppDeps) => {
-  const { db, auth, secretBox } = deps;
-  const modelFactory = deps.modelFactory ?? createModel;
+  const { db, auth } = deps;
 
   /** Languages come from the theme being extended, otherwise from the profile. */
   const context = (userId: string, themeId?: string) => {
@@ -82,28 +80,12 @@ export const generateRoutes = (deps: AppDeps) => {
           const userId = c.get('user').id;
           const input = c.req.valid('json');
           const ctx = context(userId, input.themeId);
-          const credential = findOwnedCredential(db, userId, input.credentialId);
-          if (credential.baseUrl) {
-            try {
-              await assertPublicUrl(credential.baseUrl, deps.allowPrivateAiBaseUrls);
-            } catch (err) {
-              throw new HTTPException(400, { message: (err as Error).message });
-            }
-          }
-
-          let modelId: string;
-          try {
-            modelId = resolveModelId(credential.provider, input.model ?? credential.defaultModel);
-          } catch (err) {
-            throw new HTTPException(400, { message: (err as Error).message });
-          }
-          const model = modelFactory({
-            provider: credential.provider,
-            apiKey: decryptKey(secretBox, credential, userId),
-            baseUrl: credential.baseUrl,
-            model: modelId,
-            fetch: deps.fetchFn,
-          });
+          const { model, provider, modelId, disableReasoning } = await openModel(
+            deps,
+            userId,
+            input.credentialId,
+            input.model,
+          );
 
           const parse = (text: string) => parseVocabulary(text, ctx);
           try {
@@ -113,8 +95,7 @@ export const generateRoutes = (deps: AppDeps) => {
               total: input.count,
               batchSize: BATCH_SIZE,
               avoid: ctx.avoid,
-              // Generic OpenAI-compatible servers may reject reasoning parameters.
-              disableReasoning: credential.provider !== 'openai_compat',
+              disableReasoning,
               prompt: (count, avoid) =>
                 buildVocabPrompt({ ...ctx, ...input, count, avoid, format: 'json' }),
               parse,
@@ -122,7 +103,7 @@ export const generateRoutes = (deps: AppDeps) => {
             const generationId = logGeneration({
               userId,
               source: 'api',
-              provider: credential.provider,
+              provider: provider,
               model: modelId,
               prompt: result.prompts.join('\n\n---\n\n'),
               rawOutput: result.rawOutput,
@@ -142,7 +123,7 @@ export const generateRoutes = (deps: AppDeps) => {
             logGeneration({
               userId,
               source: 'api',
-              provider: credential.provider,
+              provider: provider,
               model: modelId,
               prompt: buildVocabPrompt({ ...ctx, ...input, format: 'json' }),
               rawOutput: null,

@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildExamplesPrompt > matches the snapshot 1`] = `
+"You are an expert Polish teacher. Write example sentences for a learner whose native language is English.
+The words belong to the theme "Owoce".
+
+For EACH of these 2 Polish words, write 2 short, natural sentences (4–10 words) that a learner at A2–B1 level understands and that show the word in its usual meaning:
+- jabłko (noun: apple)
+- obierać (verb: to peel)
+
+Rules:
+- Use the word in a natural, correctly inflected form; vary the forms between sentences (e.g. a different case or person).
+- "cloze" is the word form EXACTLY as it appears in that sentence (same spelling and case), so it can be blanked out.
+- "example_translation" is a natural English translation of the sentence.
+- Keep "lemma", "pos" and "translation" exactly as given.
+
+Output ONLY a JSON array, no commentary, one object per sentence:
+\`\`\`json
+[
+  {
+    "lemma": "<word as given>",
+    "pos": "<pos as given>",
+    "translation": "<meaning as given>",
+    "example": "<Polish sentence>",
+    "example_translation": "<English translation>",
+    "cloze": "<the word form as used in the sentence>"
+  }
+]
+\`\`\`"
+`;

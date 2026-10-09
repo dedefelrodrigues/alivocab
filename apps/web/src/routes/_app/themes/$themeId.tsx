@@ -7,6 +7,7 @@ import {
   ImageIcon,
   ImagePlus,
   Layers,
+  MessageSquareText,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -42,6 +43,7 @@ import { WordThumb } from '@/features/pictures/WordThumb';
 import { AddWordDialog } from '@/features/themes/AddWordDialog';
 import { EditThemeDialog } from '@/features/themes/EditThemeDialog';
 import { EditWordDialog } from '@/features/themes/EditWordDialog';
+import { ExamplesDialog } from '@/features/themes/ExamplesDialog';
 import { SpeakButton } from '@/features/themes/SpeakButton';
 import { STATUS_META, StatusBar, StatusToggle } from '@/features/themes/status';
 import { WordMeta } from '@/features/themes/WordMeta';
@@ -99,7 +101,7 @@ function ThemePage() {
     onSuccess: () => void queryClient.invalidateQueries(themeQuery(themeId)),
     onError: (err) => toast.error(errorMessage(err)),
   });
-  const [dialog, setDialog] = useState<'add' | 'edit' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'add' | 'edit' | 'delete' | 'examples' | null>(null);
 
   const setStatus = useMutation({
     mutationFn: ({ lexemeId, status }: { lexemeId: string; status: WordStatus }) =>
@@ -193,6 +195,9 @@ function ThemePage() {
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => findPictures.mutate()}>
               <ImageIcon /> Find missing pictures
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setDialog('examples')}>
+              <MessageSquareText /> Add example sentences
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setDialog('delete')} variant="destructive">
               <Trash2 /> Delete theme
@@ -294,6 +299,9 @@ function ThemePage() {
         />
       )}
       {dialog === 'edit' && <EditThemeDialog theme={theme} onClose={() => setDialog(null)} />}
+      {dialog === 'examples' && (
+        <ExamplesDialog themeId={theme.id} onClose={() => setDialog(null)} />
+      )}
       {editingWord && (
         <EditWordDialog
           word={editingWord}

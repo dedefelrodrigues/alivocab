@@ -1,7 +1,13 @@
+import { describeAiError, generateAnswer } from '@alivocab/ai';
+import { EXAMPLES_PROMPT_VERSION } from '@alivocab/core';
 import { schema } from '@alivocab/db';
 import {
   type ContentSource,
   createThemeSchema,
+  type ExamplesPromptDto,
+  type ExamplesResultDto,
+  examplesGenerateSchema,
+  examplesImportSchema,
   saveWordsSchema,
   type ThemeDetailDto,
   themeUpdateSchema,
@@ -9,7 +15,15 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { openModel } from '../lib/ai-model.ts';
+import {
+  EXAMPLES_BATCH,
+  examplesPrompt,
+  saveExamples,
+  wordsNeedingExamples,
+} from '../lib/examples.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
+import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
 import {
   findOwnedTheme,
@@ -24,7 +38,28 @@ import type { AppDeps, AuthedEnv } from '../types.ts';
 
 const { themes, themeLexemes, aiGenerations } = schema;
 
-export const themeRoutes = ({ db, auth, pictures }: AppDeps) => {
+export const themeRoutes = (deps: AppDeps) => {
+  const { db, auth, pictures } = deps;
+
+  /** Logs an example-sentence generation (API call or pasted answer). */
+  const logExamples = (values: {
+    userId: string;
+    source: 'api' | 'manual';
+    prompt: string;
+    rawOutput: string | null;
+    parsedOk: boolean;
+    provider?: string;
+    model?: string;
+    error?: string;
+    tokensIn?: number;
+    tokensOut?: number;
+  }) =>
+    db
+      .insert(aiGenerations)
+      .values({ kind: 'example_sentences', promptVersion: EXAMPLES_PROMPT_VERSION, ...values })
+      .returning({ id: aiGenerations.id })
+      .get().id;
+
   /** Queues automatic pictures for saved words, if the user wants them. */
   const queuePictures = (userId: string, lexemeIds: string[]) => {
     if (getOrCreateProfile(db, userId).autoPictures) pictures.enqueue(lexemeIds);
@@ -127,6 +162,93 @@ export const themeRoutes = ({ db, auth, pictures }: AppDeps) => {
           theme: themeSummary(db, userId, findOwnedTheme(db, userId, theme.id)),
         });
       })
+      // Example sentences for words that have none (fill-in exercises need them).
+      .post('/:id/examples/prompt', (c) => {
+        const theme = findOwnedTheme(db, c.get('user').id, c.req.param('id'));
+        const targets = wordsNeedingExamples(db, theme).slice(0, EXAMPLES_BATCH);
+        const dto: ExamplesPromptDto = {
+          prompt: targets.length ? examplesPrompt(theme, targets) : '',
+          promptVersion: EXAMPLES_PROMPT_VERSION,
+          lemmas: targets.map((t) => t.lemma),
+        };
+        return c.json(dto);
+      })
+      .post('/:id/examples/import', validate('json', examplesImportSchema), (c) => {
+        const userId = c.get('user').id;
+        const theme = findOwnedTheme(db, userId, c.req.param('id'));
+        const { raw, prompt } = c.req.valid('json');
+        const result = saveExamples(db, theme, raw, null);
+        logExamples({
+          userId,
+          source: 'manual',
+          prompt: prompt ?? '',
+          rawOutput: raw,
+          parsedOk: result.added > 0,
+        });
+        return c.json(result);
+      })
+      .post(
+        '/:id/examples/generate',
+        rateLimitPerUser({ max: 20, windowMs: 10 * 60_000 }),
+        validate('json', examplesGenerateSchema),
+        async (c) => {
+          const userId = c.get('user').id;
+          const theme = findOwnedTheme(db, userId, c.req.param('id'));
+          const input = c.req.valid('json');
+          const targets = wordsNeedingExamples(db, theme).slice(0, EXAMPLES_BATCH);
+          if (!targets.length) {
+            const none: ExamplesResultDto = { added: 0, words: 0, remaining: 0, issues: [] };
+            return c.json(none);
+          }
+          const { model, provider, modelId, disableReasoning } = await openModel(
+            deps,
+            userId,
+            input.credentialId,
+            input.model,
+          );
+          const prompt = examplesPrompt(theme, targets);
+          let answer: Awaited<ReturnType<typeof generateAnswer>>;
+          try {
+            answer = await generateAnswer({
+              model,
+              prompt,
+              maxOutputTokens: Math.min(8_000, 160 * targets.length + 600),
+              disableReasoning,
+              emptyHint: 'returned no sentences. Try a non-reasoning model.',
+            });
+          } catch (err) {
+            const message = describeAiError(err);
+            logExamples({
+              userId,
+              source: 'api',
+              prompt,
+              rawOutput: null,
+              parsedOk: false,
+              provider,
+              model: modelId,
+              error: message,
+            });
+            throw new HTTPException(502, { message });
+          }
+          const generationId = logExamples({
+            userId,
+            source: 'api',
+            prompt,
+            rawOutput: answer.text,
+            parsedOk: false,
+            provider,
+            model: modelId,
+            tokensIn: answer.tokensIn,
+            tokensOut: answer.tokensOut,
+          });
+          const result = saveExamples(db, theme, answer.text, generationId);
+          db.update(aiGenerations)
+            .set({ parsedOk: result.added > 0 })
+            .where(eq(aiGenerations.id, generationId))
+            .run();
+          return c.json(result);
+        },
+      )
       // Retry pictures for every word in the theme that still has none.
       .post('/:id/pictures', (c) => {
         const theme = findOwnedTheme(db, c.get('user').id, c.req.param('id'));

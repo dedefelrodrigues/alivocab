@@ -31,7 +31,10 @@ export type LessonItemDto = {
   key: string;
   kind: ExerciseKind;
   card: ReviewCardDto;
-  /** Choices for `choose_*` exercises (the right one has the card's `lexemeId`). */
+  /**
+   * Choices for `choose_*` exercises (the right one has the card's `lexemeId`). An `intro` may
+   * carry meaning options too, used when the new word comes back later in the lesson.
+   */
   options: LessonOptionDto[] | null;
   /** The blanked sentence for `cloze`. */
   cloze: { before: string; answer: string; after: string; translation: string | null } | null;

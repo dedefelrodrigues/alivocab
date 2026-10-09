@@ -241,7 +241,12 @@ export function buildLesson(
         [option(card, 'image'), ...pictureDistractors.map((d) => option(d, 'image'))],
         rand,
       );
-    } else if (kind === 'choose_meaning' || kind === 'choose_word') {
+    } else if (
+      kind === 'choose_meaning' ||
+      kind === 'choose_word' ||
+      // A new word that comes back in the same lesson is asked as "pick the meaning".
+      (kind === 'intro' && card.direction === 'recognition' && textDistractors.length >= 2)
+    ) {
       options = shuffle(
         [option(card, textMode), ...textDistractors.map((d) => option(d, textMode))],
         rand,

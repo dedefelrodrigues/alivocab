@@ -185,6 +185,8 @@ function Session({
       const at = Math.min(q.length, indexRef.current + 1 + REPEAT_GAP);
       const copy: LessonItemDto = {
         ...again,
+        // A new word seen once on a flashcard comes back as "pick the meaning", if possible.
+        kind: again.kind === 'intro' && again.options ? 'choose_meaning' : again.kind,
         key: `${again.key}+`,
         options: again.options ? shuffle(again.options) : null,
       };

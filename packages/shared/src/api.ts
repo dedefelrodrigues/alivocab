@@ -184,3 +184,66 @@ export type InviteDto = {
   createdAt: string;
   status: 'active' | 'used' | 'expired' | 'revoked';
 };
+
+// ── Cloud text-to-speech ────────────────────────────────────────────────────
+
+export type CloudTtsProvider = Exclude<(typeof TTS_PROVIDERS)[number], 'browser'>;
+
+/** Models and voices per cloud TTS provider. Voices work for any language. */
+export const CLOUD_TTS: Record<
+  CloudTtsProvider,
+  { label: string; model: string; voices: readonly string[]; defaultVoice: string; note: string }
+> = {
+  openai: {
+    label: 'OpenAI',
+    model: 'gpt-4o-mini-tts',
+    voices: [
+      'coral',
+      'alloy',
+      'ash',
+      'ballad',
+      'echo',
+      'fable',
+      'nova',
+      'onyx',
+      'sage',
+      'shimmer',
+      'verse',
+    ],
+    defaultVoice: 'coral',
+    note: 'Natural voices; about $15 per million characters on your OpenAI account.',
+  },
+  google: {
+    label: 'Google Gemini',
+    model: 'gemini-2.5-flash-preview-tts',
+    voices: [
+      'Kore',
+      'Puck',
+      'Charon',
+      'Zephyr',
+      'Fenrir',
+      'Leda',
+      'Aoede',
+      'Orus',
+      'Callirrhoe',
+      'Enceladus',
+    ],
+    defaultVoice: 'Kore',
+    note: 'Uses your Gemini key; the free tier is rate-limited.',
+  },
+};
+
+/** The voice a cloud provider uses: the learner's choice if it belongs to it, else the default. */
+export function cloudVoice(provider: CloudTtsProvider, voice: string | null | undefined): string {
+  const info = CLOUD_TTS[provider];
+  return voice && info.voices.includes(voice) ? voice : info.defaultVoice;
+}
+
+export const ttsRequestSchema = z.object({
+  text: z.string().trim().min(1).max(600),
+  lang: languageCodeSchema,
+  /** Defaults to the learner's voice; dialogues pass a second voice for the other speaker. */
+  voice: z.string().trim().max(40).optional(),
+});
+
+export type TtsResultDto = { url: string };

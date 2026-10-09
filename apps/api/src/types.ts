@@ -1,5 +1,6 @@
-import type { createModel } from '@alivocab/ai';
+import type { createModel, synthesize } from '@alivocab/ai';
 import type { Db } from '@alivocab/db';
+import type { CloudTtsProvider } from '@alivocab/shared';
 import type { Auth } from './auth.ts';
 import type { SecretBox } from './lib/crypto.ts';
 import type { PictureService } from './lib/pictures/service.ts';
@@ -15,6 +16,16 @@ export type AppDeps = {
   fetchFn?: typeof fetch;
   /** Injected for tests; defaults to the AI SDK provider factory. */
   modelFactory?: typeof createModel;
+  /** Where generated pronunciation audio is cached. */
+  audioDir: string;
+  /** Injected for tests; defaults to the provider's speech model. */
+  synthesizeFn?: (input: {
+    provider: CloudTtsProvider;
+    apiKey: string;
+    text: string;
+    lang: string;
+    voice: string;
+  }) => ReturnType<typeof synthesize>;
   /** Request logging (off in tests). */
   log?: boolean;
 };

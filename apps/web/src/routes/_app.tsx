@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useAppearance } from '@/appearance/AppearanceProvider';
 import { AppHeader } from '@/components/app-header';
 import { meQuery } from '@/lib/queries';
+import { configureSpeech } from '@/lib/speech';
 
 /** Pathless layout for everything that requires a signed-in user. */
 export const Route = createFileRoute('/_app')({
@@ -30,6 +31,10 @@ function AppLayout() {
       });
     }
   }, [profile, hydrate]);
+
+  useEffect(() => {
+    if (profile) configureSpeech({ provider: profile.ttsProvider, voice: profile.ttsVoice });
+  }, [profile]);
 
   return (
     <div className="flex min-h-dvh flex-col">

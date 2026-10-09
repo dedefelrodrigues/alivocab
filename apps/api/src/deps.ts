@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createDb, MIGRATIONS_DIR, runMigrations } from '@alivocab/db';
 import { createAuth } from './auth.ts';
 import { allowPrivateAiBaseUrls, databasePath, env, mediaDir } from './env.ts';
@@ -38,5 +38,6 @@ export function createDepsFromEnv(): AppDeps {
       log: (msg) => console.warn(`[pictures] ${msg}`),
     }),
     allowPrivateAiBaseUrls,
+    audioDir: join(mediaDir, 'tts'),
   };
 }

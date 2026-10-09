@@ -36,6 +36,7 @@ export function createTestApp(overrides: Partial<AppDeps> = {}) {
     }),
     secretBox: createSecretBox(randomBytes(32).toString('base64')),
     allowPrivateAiBaseUrls: false,
+    audioDir: mkdtempSync(join(tmpdir(), 'alivocab-audio-')),
     fetchFn,
     log: false,
     ...overrides,

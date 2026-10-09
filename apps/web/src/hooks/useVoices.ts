@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { speak as speakWith } from '@/lib/speech';
 
 const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
@@ -25,14 +26,9 @@ export function useVoices(lang: string): { supported: boolean; voices: SpeechSyn
   return { supported, voices };
 }
 
-export function speak(text: string, lang: string, voiceURI?: string | null) {
-  if (!supported) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = lang;
-  const voice = window.speechSynthesis.getVoices().find((v) => v.voiceURI === voiceURI);
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
+/** Speaks with the learner's chosen provider (see `@/lib/speech`). */
+export function speak(text: string, lang: string, voice?: string | null) {
+  void speakWith(text, lang, { voice });
 }
 
 /** Short sample phrases for the "Test voice" button. */

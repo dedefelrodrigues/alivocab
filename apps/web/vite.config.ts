@@ -55,6 +55,17 @@ export default defineConfig({
               cacheableResponse: { statuses: [200] },
             },
           },
+          {
+            // Cloud pronunciation, content-addressed (a URL always means the same audio).
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/tts/audio/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pronunciation',
+              expiration: { maxEntries: 5000, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [200] },
+              rangeRequests: true,
+            },
+          },
         ],
       },
     }),

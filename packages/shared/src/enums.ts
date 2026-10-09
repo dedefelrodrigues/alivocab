@@ -61,6 +61,8 @@ export type GenerationKind = (typeof GENERATION_KINDS)[number];
 export const EXERCISE_TYPES = [
   'flashcard',
   'mcq',
+  /** Typing the target word from its meaning or picture. */
+  'typing',
   'cloze',
   'listening',
   'drill',
@@ -69,6 +71,23 @@ export const EXERCISE_TYPES = [
   'roleplay',
 ] as const;
 export type ExerciseType = (typeof EXERCISE_TYPES)[number];
+
+/** Exercises in a lesson (see `chooseExercise` in @alivocab/core and PLAN.md §6). */
+export const EXERCISE_KINDS = [
+  /** A brand-new word: shown as a flashcard and self-rated. */
+  'intro',
+  /** Target word shown → pick its meaning. Grades recognition. */
+  'choose_meaning',
+  /** Target word shown → pick its picture. Grades recognition. */
+  'choose_picture',
+  /** Meaning (and picture) shown → pick the target word. Grades recall. */
+  'choose_word',
+  /** Meaning (and picture) shown → type the target word. Grades recall. */
+  'type_word',
+  /** A sentence with the word blanked out → type it. Grades recall. */
+  'cloze',
+] as const;
+export type ExerciseKind = (typeof EXERCISE_KINDS)[number];
 
 export const EXPOSURE_CONTEXTS = [...EXERCISE_TYPES, 'proposal'] as const;
 export type ExposureContext = (typeof EXPOSURE_CONTEXTS)[number];

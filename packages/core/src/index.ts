@@ -1,3 +1,6 @@
+export * from './exercises/answer.ts';
+export * from './exercises/choices.ts';
+export * from './exercises/plan.ts';
 export { BATCH_SEPARATOR } from './import/extract.ts';
 export * from './import/parse.ts';
 export * from './prompts/vocabProposal.ts';

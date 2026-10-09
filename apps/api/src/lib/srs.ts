@@ -374,7 +374,12 @@ export function gradeCard(
   db: Db,
   userId: string,
   cardId: string,
-  input: { rating: ReviewRating; exerciseType: ExerciseType; responseMs?: number },
+  input: {
+    rating: ReviewRating;
+    exerciseType: ExerciseType;
+    responseMs?: number;
+    answer?: string;
+  },
   now = new Date(),
 ): GradeResultDto {
   const row = db
@@ -398,6 +403,7 @@ export function gradeCard(
         exerciseType: input.exerciseType,
         correct: success,
         responseMs: input.responseMs ?? null,
+        answerGiven: input.answer ?? null,
         stateBefore: before.state,
         stabilityBefore: before.stability,
         dueBefore: before.due,

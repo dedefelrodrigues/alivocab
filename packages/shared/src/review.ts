@@ -31,6 +31,8 @@ export const gradeSchema = z.object({
   rating: z.enum(REVIEW_RATINGS),
   exerciseType: z.enum(EXERCISE_TYPES).default('flashcard'),
   responseMs: z.number().int().min(0).max(3_600_000).optional(),
+  /** What the learner typed or chose, for the review log. */
+  answer: z.string().max(200).optional(),
 });
 export type GradeRequest = z.input<typeof gradeSchema>;
 

@@ -15,7 +15,8 @@
     "format": "biome format --write .",
     "db:generate": "pnpm --filter @alivocab/db db:generate",
     "db:studio": "pnpm --filter @alivocab/db db:studio",
-    "db:seed": "pnpm --filter @alivocab/api db:seed"
+    "db:seed": "pnpm --filter @alivocab/api db:seed",
+    "db:backup": "pnpm --filter @alivocab/api db:backup"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

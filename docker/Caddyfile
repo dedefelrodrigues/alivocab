@@ -1,0 +1,24 @@
+# HTTPS reverse proxy for AliVocab. Caddy gets and renews the certificate for {$DOMAIN}
+# from Let's Encrypt automatically (ports 80 and 443 must reach this server).
+{$DOMAIN} {
+	# Compress everything except role-play replies, which must reach the browser as they stream.
+	@compressible not path_regexp ^/api/roleplay/[^/]+/messages$
+	encode @compressible zstd gzip
+
+	reverse_proxy app:3180 {
+		# Pass streamed answers on as they arrive.
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

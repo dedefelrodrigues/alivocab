@@ -26,8 +26,8 @@ export type AppDeps = {
     lang: string;
     voice: string;
   }) => ReturnType<typeof synthesize>;
-  /** Request logging (off in tests). */
-  log?: boolean;
+  /** Request logging: readable lines in development, JSON in production, off in tests. */
+  log?: 'pretty' | 'json' | false;
 };
 
 export type AuthSession = NonNullable<Awaited<ReturnType<Auth['api']['getSession']>>>;

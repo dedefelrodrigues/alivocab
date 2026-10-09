@@ -22,7 +22,7 @@ Multi-user with login (invite-only sign-up), self-hosted later on a VPS with Doc
 | Auth       | Better Auth (email + password, cookie sessions, Drizzle adapter) + custom invite-code gate |
 | AI         | Vercel AI SDK (`ai`) with direct provider packages: Anthropic, OpenAI, DeepSeek, Google (Gemini free tier), OpenRouter / any OpenAI-compatible endpoint. In browser: WebLLM (`@mlc-ai/web-llm`) and Chrome built-in AI (Prompt API). Plus a manual copy-prompt → paste-result flow |
 | SRS        | FSRS via `ts-fsrs` |
-| TTS        | Web Speech API (default, free) + optional cloud TTS (OpenAI / Azure / ElevenLabs) with server-side audio cache |
+| TTS        | Web Speech API (default, free) + server voices with a disk cache: Microsoft Edge neural voices (free, no key, unofficial `msedge-tts`), OpenAI and Gemini (own key) |
 | Tooling    | Biome (lint + format), Vitest (unit), Playwright (e2e, later), GitHub Actions CI |
 | Deploy     | Single Docker image (API also serves the built SPA), docker-compose + Caddy (HTTPS), SQLite on a volume, Litestream or nightly backup |
 
@@ -127,9 +127,15 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
 - Streaming chat (role-play) uses `streamConversation()` from `packages/ai` and returns its text
   stream as the response; the client reads it with `fetch` (not the Hono RPC client) and parses
   it with `parseRoleplayTurn()` as it arrives. Save turns in `onDone`, never from the client.
+  `onDone` runs before the stream closes; a failure ends the stream with `<stream-error>` (check
+  `turn.error` on the client) and should save nothing.
+- Activity log (Settings → Advanced, `/log`): `activityLogger()` in `lib/activity.ts` records API
+  requests (failures always, everything in advanced mode); AI calls come from `ai_generations`.
+  In the web app, report failures the server can't see (network, streams, audio playback) with
+  `reportProblem()` from `src/lib/activity.ts`. Never log request bodies, passwords or keys.
 - Pronunciation: the web app always calls `speak()` from `src/lib/speech.ts` (never
   `speechSynthesis` directly); cloud audio comes from `POST /api/tts` (`lib/tts.ts`, cached by
-  content hash). Tests inject `synthesizeFn` instead of calling providers.
+  content hash; the chosen provider, then Edge via `ttsChain()`, then the browser in the web app). Tests inject `synthesizeFn` instead of calling providers.
 - Pictures: everything goes through the picture service (`apps/api/src/lib/pictures`, `deps.pictures`).
   Which picture a user sees is decided only by `resolvePictures()` (hidden → own choice → shared
   default). Downloads must go through `downloadImage()` (SSRF guard, size cap, sharp re-encode).

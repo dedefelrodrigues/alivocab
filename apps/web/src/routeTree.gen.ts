@@ -15,6 +15,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppLessonRouteImport } from './routes/_app/lesson'
+import { Route as AppLogRouteImport } from './routes/_app/log'
 import { Route as AppReviewRouteImport } from './routes/_app/review'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppStatsRouteImport } from './routes/_app/stats'
@@ -51,6 +52,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
 const AppLessonRoute = AppLessonRouteImport.update({
   id: '/lesson',
   path: '/lesson',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLogRoute = AppLogRouteImport.update({
+  id: '/log',
+  path: '/log',
   getParentRoute: () => AppRoute,
 } as any)
 const AppReviewRoute = AppReviewRouteImport.update({
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
   '/lesson': typeof AppLessonRoute
+  '/log': typeof AppLogRoute
   '/review': typeof AppReviewRoute
   '/settings': typeof AppSettingsRoute
   '/stats': typeof AppStatsRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
   '/lesson': typeof AppLessonRoute
+  '/log': typeof AppLogRoute
   '/review': typeof AppReviewRoute
   '/settings': typeof AppSettingsRoute
   '/stats': typeof AppStatsRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/_app/admin': typeof AppAdminRoute
   '/_app/lesson': typeof AppLessonRoute
+  '/_app/log': typeof AppLogRoute
   '/_app/review': typeof AppReviewRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/stats': typeof AppStatsRoute
@@ -149,6 +158,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin'
     | '/lesson'
+    | '/log'
     | '/review'
     | '/settings'
     | '/stats'
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin'
     | '/lesson'
+    | '/log'
     | '/review'
     | '/settings'
     | '/stats'
@@ -179,6 +190,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/_app/admin'
     | '/_app/lesson'
+    | '/_app/log'
     | '/_app/review'
     | '/_app/settings'
     | '/_app/stats'
@@ -238,6 +250,13 @@ declare module '@tanstack/react-router' {
       path: '/lesson'
       fullPath: '/lesson'
       preLoaderRoute: typeof AppLessonRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/log': {
+      id: '/_app/log'
+      path: '/log'
+      fullPath: '/log'
+      preLoaderRoute: typeof AppLogRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/review': {
@@ -302,6 +321,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppLessonRoute: typeof AppLessonRoute
+  AppLogRoute: typeof AppLogRoute
   AppReviewRoute: typeof AppReviewRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatsRoute: typeof AppStatsRoute
@@ -316,6 +336,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppLessonRoute: AppLessonRoute,
+  AppLogRoute: AppLogRoute,
   AppReviewRoute: AppReviewRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppStatsRoute: AppStatsRoute,

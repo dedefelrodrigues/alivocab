@@ -4,10 +4,19 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppearanceProvider } from './appearance/AppearanceProvider.tsx';
+import {
+  reportingMutationCache,
+  reportingQueryCache,
+  reportUncaughtErrors,
+} from './lib/activity.ts';
 import { routeTree } from './routeTree.gen.ts';
 import './styles/index.css';
 
+reportUncaughtErrors();
+
 const queryClient = new QueryClient({
+  queryCache: reportingQueryCache(),
+  mutationCache: reportingMutationCache(),
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 

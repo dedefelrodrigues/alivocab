@@ -1,5 +1,5 @@
-import type { LessonMode, MeDto } from '@alivocab/shared';
-import { queryOptions } from '@tanstack/react-query';
+import type { LessonMode, LogCategory, MeDto } from '@alivocab/shared';
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { api, unwrap } from './api.ts';
 import { authClient } from './auth-client.ts';
 
@@ -111,4 +111,21 @@ export const roleplayQuery = (id: string) =>
   queryOptions({
     queryKey: ['roleplay', id],
     queryFn: () => unwrap(api.roleplay[':id'].$get({ param: { id } })),
+  });
+
+export const logsQuery = (filters: { level: 'all' | 'problems'; category?: LogCategory }) =>
+  infiniteQueryOptions({
+    queryKey: ['logs', filters],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.logs.$get({
+          query: {
+            level: filters.level,
+            ...(filters.category ? { category: filters.category } : {}),
+            ...(pageParam ? { before: String(pageParam) } : {}),
+          },
+        }),
+      ),
+    initialPageParam: null as number | null,
+    getNextPageParam: (last) => last.nextBefore,
   });

@@ -12,7 +12,9 @@ import {
   Mic,
   MicOff,
   PencilLine,
+  RotateCcw,
   Send,
+  TriangleAlert,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -22,8 +24,9 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SpeakButton } from '@/features/themes/SpeakButton';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { reportProblem } from '@/lib/activity';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { roleplayQuery } from '@/lib/queries';
+import { meQuery, roleplayQuery } from '@/lib/queries';
 import { speak, stopSpeaking } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +44,8 @@ function readAutoplay(): boolean {
 
 /** A turn being streamed: the learner's message (if any) and the partner's answer so far. */
 type Pending = { userText: string | null; raw: string };
+/** A turn that didn't go through (nothing was saved), shown in the chat with a retry. */
+type Failed = { userText: string | null; message: string };
 
 function RoleplayPage() {
   const { chatId } = Route.useParams();
@@ -55,6 +60,8 @@ function Chat({ chat }: { chat: RoleplayDto }) {
   const queryClient = useQueryClient();
   const { scenario, messages, finishedAt } = chat.content;
   const [pending, setPending] = useState<Pending | null>(null);
+  const [failed, setFailed] = useState<Failed | null>(null);
+  const { data: me } = useQuery(meQuery);
   const [input, setInput] = useState('');
   const [shownTranslations, setShownTranslations] = useState<Set<number>>(() => new Set());
   const [autoplay, setAutoplay] = useState(readAutoplay);
@@ -70,36 +77,54 @@ function Chat({ chat }: { chat: RoleplayDto }) {
 
   const send = useCallback(
     async (text: string | null) => {
+      setFailed(null);
       setPending({ userText: text, raw: '' });
+      let raw = '';
+      // Failures the server already logged (an error answer, a failed model) aren't reported again.
+      let serverKnows = false;
       try {
         const res = await fetch(`/api/roleplay/${encodeURIComponent(chat.id)}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify(text ? { text } : {}),
+        }).catch(() => {
+          throw new Error('Could not reach the server. Check your connection.');
         });
         if (!res.ok || !res.body) {
+          serverKnows = true;
           const err = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(err.error ?? `Request failed (${res.status})`);
         }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let raw = '';
         for (;;) {
-          const { done, value } = await reader.read();
+          const { done, value } = await reader.read().catch(() => {
+            throw new Error('The connection broke while the partner was answering.');
+          });
           if (done) break;
           raw += decoder.decode(value, { stream: true });
           setPending({ userText: text, raw });
         }
         const turn = parseRoleplayTurn(raw);
-        if (!turn.reply) throw new Error('The partner didn’t answer. Try again.');
+        if (turn.error) {
+          serverKnows = true;
+          throw new Error(turn.error);
+        }
+        if (!turn.reply) throw new Error('The partner didn’t answer.');
         if (autoplay) void speak(turn.reply, chat.lang);
-        // The server saves the turn when the stream ends; give it a moment.
-        await new Promise((r) => setTimeout(r, 150));
+        // The server saves the turn before the stream ends.
         await refresh();
       } catch (err) {
-        toast.error(errorMessage(err));
+        const message = errorMessage(err);
+        setFailed({ userText: text, message });
         if (text) setInput(text);
+        if (!serverKnows) {
+          reportProblem(message, {
+            context: 'role-play',
+            details: { chatId: chat.id, sent: text, received: raw.slice(0, 2000) },
+          });
+        }
       } finally {
         setPending(null);
       }
@@ -279,6 +304,39 @@ function Chat({ chat }: { chat: RoleplayDto }) {
                   <Loader2 className="size-4 animate-spin" /> {scenario.aiRole} is typing…
                 </p>
               )}
+            </div>
+          </li>
+        )}
+        {failed && !pending && (
+          <li className="space-y-2" role="alert">
+            {failed.userText && (
+              <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm border border-dashed px-4 py-2.5 text-muted-foreground">
+                <p lang={chat.lang}>{failed.userText}</p>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-incorrect/40 bg-incorrect/10 px-3 py-2 text-sm">
+              <TriangleAlert className="size-4 shrink-0 text-incorrect" aria-hidden />
+              <p className="min-w-0 flex-1">
+                <span className="font-medium">
+                  {failed.userText ? 'Not sent. ' : 'The partner didn’t answer. '}
+                </span>
+                {failed.message}
+              </p>
+              {me?.profile.advancedMode && (
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/log">See the log</Link>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (failed.userText) setInput('');
+                  void send(failed.userText);
+                }}
+              >
+                <RotateCcw /> Try again
+              </Button>
             </div>
           </li>
         )}

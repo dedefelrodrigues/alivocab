@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { AccountSection } from '@/features/settings/AccountSection';
+import { AdvancedSection } from '@/features/settings/AdvancedSection';
 import { AiProvidersSection } from '@/features/settings/AiProvidersSection';
 import { AppearanceSection } from '@/features/settings/AppearanceSection';
 import { LearningSection } from '@/features/settings/LearningSection';
@@ -15,6 +16,7 @@ const SECTIONS = [
   { id: 'voice', label: 'Voice' },
   { id: 'ai', label: 'AI providers' },
   { id: 'account', label: 'Account' },
+  { id: 'advanced', label: 'Advanced' },
 ];
 
 function SettingsPage() {
@@ -39,6 +41,7 @@ function SettingsPage() {
       <VoiceSection />
       <AiProvidersSection />
       <AccountSection />
+      <AdvancedSection />
     </div>
   );
 }

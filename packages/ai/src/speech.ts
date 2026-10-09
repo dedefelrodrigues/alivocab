@@ -3,8 +3,11 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { CLOUD_TTS, type CloudTtsProvider, languageName } from '@alivocab/shared';
 import { experimental_generateSpeech as generateSpeech, type SpeechModel } from 'ai';
 
+/** Providers served through the AI SDK (Edge has its own client, see edge-speech.ts). */
+export type SdkTtsProvider = Exclude<CloudTtsProvider, 'edge'>;
+
 export type SpeechModelInput = {
-  provider: CloudTtsProvider;
+  provider: SdkTtsProvider;
   apiKey: string;
   fetch?: typeof fetch;
 };
@@ -19,10 +22,12 @@ export function createSpeechModel({ provider, apiKey, fetch }: SpeechModelInput)
 
 export type SynthesizeInput = {
   model: SpeechModel;
-  provider: CloudTtsProvider;
+  provider: SdkTtsProvider;
   text: string;
   lang: string;
   voice: string;
+  /** Give up after this long (default 60 s). */
+  timeoutMs?: number;
 };
 
 /** Speaks `text` in `lang`; returns the audio bytes and their media type. */
@@ -39,7 +44,7 @@ export async function synthesize(
     instructions: `Read this ${language} text aloud as a native speaker, clearly and at a natural pace for a language learner.`,
     ...(input.provider === 'openai' ? { outputFormat: 'mp3' } : {}),
     maxRetries: 1,
-    abortSignal: AbortSignal.timeout(60_000),
+    abortSignal: AbortSignal.timeout(input.timeoutMs ?? 60_000),
   });
   return { audio: result.audio.uint8Array, mediaType: result.audio.mediaType };
 }

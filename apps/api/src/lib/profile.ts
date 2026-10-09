@@ -28,5 +28,6 @@ export function toProfileDto(row: typeof schema.userProfiles.$inferSelect): Prof
     colorPalette: row.colorPalette,
     colorMode: row.colorMode,
     autoPictures: row.autoPictures,
+    advancedMode: row.advancedMode,
   };
 }

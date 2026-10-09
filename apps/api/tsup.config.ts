@@ -10,8 +10,8 @@ export default defineConfig({
   sourcemap: true,
   // Workspace packages ship TypeScript source, so bundle them into the output.
   noExternal: [/^@alivocab\//],
-  // Native module: must stay a runtime dependency.
-  external: ['better-sqlite3'],
+  // Native module, and a CommonJS WebSocket client (ws): runtime dependencies, not bundled.
+  external: ['better-sqlite3', 'msedge-tts'],
   async onSuccess() {
     cpSync('../../packages/db/drizzle', 'dist/drizzle', { recursive: true });
   },

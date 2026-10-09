@@ -33,6 +33,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
 | D23 | Pictures | Optional picture per word from free photo search (Wikimedia Commons and Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
 | D24 | Lessons vs. flashcards | Flashcards (self-rated) stay as the quick review. Lessons mix exercises chosen per card and grade the same FSRS cards. Answer checking runs in the browser (core is shared), since grading only affects the learner's own schedule. Extra practice outside the schedule never changes due dates |
+| D25 | Cloud voices | OpenAI and Google Gemini TTS with the learner's own key (no shared paid key); audio cached on disk by content hash and reused across users; browser voices stay the default and the fallback |
+| D26 | Materials | Listening scripts and grammar notes are per-user, per-theme `lessons` rows generated on request (never automatically), from the theme words still being learned. Listening is for exposure and comprehension; it doesn't grade cards |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -471,10 +473,26 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > filters.
 
 ### Phase 5: Listening, grammar, drills
-- [ ] Listening script generation (structured: speakers, lines, translation, questions) + player (Web Speech, per-line, speed)
-- [ ] Optional cloud TTS provider + `tts_cache` on disk
-- [ ] Grammar note generation per theme
-- [ ] Declension/conjugation drills from `forms_json` (+ AI fill of missing forms)
+- [x] Listening script generation (structured: speakers, lines, translation, questions) + player (Web Speech, per-line, speed)
+- [x] Optional cloud TTS provider + `tts_cache` on disk
+- [x] Grammar note generation per theme
+- [x] Declension/conjugation drills from `forms_json` (+ AI fill of missing forms)
+
+> Notes: **Drills** (`core/exercises/drills.ts`): `pickDrill` asks for a stored form (labels for
+> every form key; Polish also gets sentence frames like "Idę z ___"). In lessons a drill is one of
+> the established-recall exercises (grades recall); "Grammar drill" on the theme page runs
+> `mode=drill`, outside the schedule. Missing forms and example sentences are filled by AI on
+> demand: `/api/themes/:id/fill/{forms|examples}/{prompt,import,generate}` (`lib/fill.ts`, only
+> fills, never overwrites). **Cloud TTS** (D25): Settings → Voice offers browser voices, OpenAI
+> (`gpt-4o-mini-tts`) or Google Gemini (`gemini-2.5-flash-preview-tts`) with the learner's own key;
+> `POST /api/tts` caches audio by content hash in `tts_cache` + `MEDIA_DIR/tts`, so each text/voice
+> is generated once (shared by everyone). The web `speak()` (`lib/speech.ts`) falls back to the
+> browser voice on errors. **Materials** (D26): listening scripts (dialogue or story, short or
+> longer, level) and grammar notes (optional topic) are `lessons` rows (`kind` listening/grammar)
+> with the theme words they use in `lesson_lexemes` (matched by lemma or stored form). Created
+> with an API key or copy-prompt / paste (`listening-script@1`, `grammar-note@1`); answers are read
+> by tolerant parsers in `core/materials` and validated by the shared schemas. Listening to a
+> script or reading a note counts once as an exposure of its words.
 
 ### Phase 6: Sentence building, translation, role-play
 - [ ] Scrambled-sentence exercise

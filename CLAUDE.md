@@ -119,6 +119,14 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   gets and how a result maps to a rating live in `packages/core/src/exercises` (pure, used by the
   web app to check answers). Graded answers still go through `gradeCard()`; extra practice
   (`mode=practice`) goes through `recordPractice()` and never touches cards.
+- AI-written content beyond word lists follows one pattern: a versioned prompt in
+  `packages/core/src/prompts` or `core/materials`, a parser that never throws (tolerant, then the
+  shared zod schema), and three routes: `…/prompt` (copy-paste), `…/import` (pasted answer) and
+  `…/generate` (saved API key via `openModel()` + `generateAnswer()`), each logged in
+  `ai_generations`. See `lib/fill.ts` (examples, forms) and `lib/materials.ts` (listening, grammar).
+- Pronunciation: the web app always calls `speak()` from `src/lib/speech.ts` (never
+  `speechSynthesis` directly); cloud audio comes from `POST /api/tts` (`lib/tts.ts`, cached by
+  content hash). Tests inject `synthesizeFn` instead of calling providers.
 - Pictures: everything goes through the picture service (`apps/api/src/lib/pictures`, `deps.pictures`).
   Which picture a user sees is decided only by `resolvePictures()` (hidden → own choice → shared
   default). Downloads must go through `downloadImage()` (SSRF guard, size cap, sharp re-encode).

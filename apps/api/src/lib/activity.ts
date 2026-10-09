@@ -18,6 +18,7 @@ import { and, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
 import type { AuthUser } from '../types.ts';
+import { logger } from './logger.ts';
 
 const { aiGenerations, appLogs, userProfiles } = schema;
 
@@ -77,7 +78,7 @@ export function recordLog(
     prune(db, Date.now());
   } catch (err) {
     // Logging must never break the request it describes.
-    console.error('activity log:', err);
+    logger.error({ err }, 'activity log write failed');
   }
 }
 

@@ -25,6 +25,14 @@ const envSchema = z.object({
   PEXELS_API_KEY: z.string().min(10).optional(),
   /** URL or email sent in the User-Agent to picture providers (Wikimedia asks for one). */
   PICTURES_CONTACT: z.string().min(3).max(200).optional(),
+  /** Built web app to serve (production; in development Vite serves it). */
+  STATIC_DIR: z.string().optional(),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  BACKUP_DIR: z.string().default('./data/backups'),
+  /** Nightly backups are kept this many days; 0 turns nightly backups off. */
+  BACKUP_KEEP_DAYS: z.coerce.number().int().min(0).max(3650).default(14),
+  /** Hour of the night (server time, 0–23) for the nightly backup (production only). */
+  BACKUP_HOUR: z.coerce.number().int().min(0).max(23).default(3),
   ADMIN_EMAIL: z.email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
 });
@@ -55,3 +63,13 @@ export const mediaDir = isAbsolute(env.MEDIA_DIR)
 
 export const allowPrivateAiBaseUrls =
   env.ALLOW_PRIVATE_AI_BASE_URLS ?? env.NODE_ENV !== 'production';
+
+export const backupDir = isAbsolute(env.BACKUP_DIR)
+  ? env.BACKUP_DIR
+  : resolve(REPO_ROOT, env.BACKUP_DIR);
+
+export const staticDir = env.STATIC_DIR
+  ? isAbsolute(env.STATIC_DIR)
+    ? env.STATIC_DIR
+    : resolve(REPO_ROOT, env.STATIC_DIR)
+  : undefined;

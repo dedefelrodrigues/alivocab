@@ -1,0 +1,49 @@
+# Production: AliVocab behind Caddy (automatic HTTPS). Needs DOMAIN and the secrets in .env.
+# See docs/deploy.md.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: alivocab:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed inside the container (override the development values in .env).
+      NODE_ENV: production
+      PORT: "3180"
+      BETTER_AUTH_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      DATABASE_URL: /data/alivocab.db
+      MEDIA_DIR: /data/media
+      BACKUP_DIR: /data/backups
+      STATIC_DIR: /app/public
+    volumes:
+      - app-data:/data
+    expose:
+      - "3180"
+    # Lets open role-play streams finish when updating.
+    stop_grace_period: 15s
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

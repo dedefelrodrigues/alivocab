@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/*.log
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+data
+apps/web/src/styles/palettes.generated.css

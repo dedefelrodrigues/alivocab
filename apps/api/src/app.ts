@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
-import { logger } from 'hono/logger';
+import { logger as prettyLogger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { activityLogger } from './lib/activity.ts';
+import { logger } from './lib/logger.ts';
 import { adminRoutes } from './routes/admin.ts';
 import { credentialRoutes } from './routes/credentials.ts';
 import { generateRoutes } from './routes/generate.ts';
-import { health } from './routes/health.ts';
+import { healthRoutes } from './routes/health.ts';
 import { lessonRoutes } from './routes/lessons.ts';
 import { logRoutes } from './routes/logs.ts';
 import { materialRoutes } from './routes/materials.ts';
@@ -18,7 +20,24 @@ import { statsRoutes } from './routes/stats.ts';
 import { themeRoutes } from './routes/themes.ts';
 import { ttsRoutes } from './routes/tts.ts';
 import { wordRoutes } from './routes/words.ts';
-import type { AppDeps } from './types.ts';
+import type { AppDeps, AuthUser } from './types.ts';
+
+/** One JSON line per request (health checks excluded: Docker polls them). */
+const jsonRequestLog = createMiddleware<{ Variables: { user?: AuthUser } }>(async (c, next) => {
+  const started = performance.now();
+  await next();
+  if (c.req.path === '/api/health') return;
+  logger.info(
+    {
+      method: c.req.method,
+      path: c.req.path,
+      status: c.res.status,
+      ms: Math.round(performance.now() - started),
+      user: c.get('user')?.id,
+    },
+    'request',
+  );
+});
 
 /**
  * Builds the Hono app from its dependencies (DB, auth, crypto), so tests can pass an
@@ -27,7 +46,9 @@ import type { AppDeps } from './types.ts';
 export function createApp(deps: AppDeps) {
   const app = new Hono().basePath('/api');
 
-  if (deps.log !== false) app.use(logger());
+  const log = deps.log ?? 'pretty';
+  if (log === 'pretty') app.use(prettyLogger());
+  if (log === 'json') app.use(jsonRequestLog);
   app.use(secureHeaders());
   app.use(activityLogger(deps.db));
 
@@ -35,7 +56,7 @@ export function createApp(deps: AppDeps) {
     if (err instanceof HTTPException) {
       return c.json({ error: err.message }, err.status);
     }
-    console.error(err);
+    logger.error({ err, method: c.req.method, path: c.req.path }, 'unhandled error');
     return c.json({ error: 'Internal server error' }, 500);
   });
   app.notFound((c) => c.json({ error: 'Not found' }, 404));
@@ -43,7 +64,7 @@ export function createApp(deps: AppDeps) {
   app.on(['GET', 'POST'], '/auth/*', (c) => deps.auth.handler(c.req.raw));
 
   return app
-    .route('/health', health)
+    .route('/health', healthRoutes(deps))
     .route('/me', meRoutes(deps))
     .route('/credentials', credentialRoutes(deps))
     .route('/admin', adminRoutes(deps))

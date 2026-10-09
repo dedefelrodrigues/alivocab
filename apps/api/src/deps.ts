@@ -4,6 +4,7 @@ import { createDb, MIGRATIONS_DIR, runMigrations } from '@alivocab/db';
 import { createAuth } from './auth.ts';
 import { allowPrivateAiBaseUrls, databasePath, env, mediaDir } from './env.ts';
 import { createSecretBox } from './lib/crypto.ts';
+import { logger } from './lib/logger.ts';
 import { createPictureService } from './lib/pictures/service.ts';
 import { createPictureStore } from './lib/pictures/store.ts';
 import type { AppDeps } from './types.ts';
@@ -35,9 +36,10 @@ export function createDepsFromEnv(): AppDeps {
       store: createPictureStore(mediaDir),
       pexelsKey: env.PEXELS_API_KEY,
       contact: env.PICTURES_CONTACT,
-      log: (msg) => console.warn(`[pictures] ${msg}`),
+      log: (msg) => logger.warn({ area: 'pictures' }, msg),
     }),
     allowPrivateAiBaseUrls,
     audioDir: join(mediaDir, 'tts'),
+    log: env.NODE_ENV === 'production' ? 'json' : 'pretty',
   };
 }

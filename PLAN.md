@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phase 3 done: MVP** (SRS + flashcards). Next: Phase 4 (multiple choice, cloze, lessons, stats). Each phase ends in a usable, committed state.
+Status: **Phase 7 done: all planned phases complete** (deployable with Docker + Caddy, see [docs/deploy.md](docs/deploy.md)). Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -38,6 +38,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D27 | Translation checking | Free comparison with the stored sentence first; AI only on request ("Ask AI if mine is right"), so practice works without a key and costs nothing by default |
 | D28 | Role-play transport | Plain text streaming with simple tags instead of provider-specific structured streaming, so every provider (and models that ignore the tags) works; turns are saved server-side when complete, before the stream closes; a failed turn ends the stream with `<stream-error>` and saves nothing |
 | D29 | Activity log | Per-user log page (Settings → Advanced). Failed requests and app-side problems are always kept; **advanced mode** also records every request. AI calls are shown from `ai_generations` rather than copied. Kept 14 days. No request bodies are stored |
+| D30 | Backups | Nightly copies written by the app itself with SQLite's online backup API (consistent while running, no cron or sidecar), kept 14 days on the data volume; copying them and `media/` off the server is the operator's job (documented). Litestream stays an option if continuous replication is ever needed |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -518,10 +519,23 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > "End and review" lists all corrections. Role-play needs an API key (no copy-paste path).
 
 ### Phase 7: Hosting & operations
-- [ ] Multi-stage Dockerfile (build → slim runtime), `docker-compose.yml` with Caddy (auto-HTTPS), `/data` volume
-- [ ] Migrations on boot, health check, structured logs (pino)
-- [ ] Backups: Litestream to S3-compatible storage or a nightly `sqlite3 .backup` cron
-- [ ] Deployment guide in `docs/deploy.md`
+- [x] Multi-stage Dockerfile (build → slim runtime), `compose.yaml` with Caddy (auto-HTTPS), `/data` volume
+- [x] Migrations on boot, health check, structured logs (pino)
+- [x] Backups: nightly database copy from the app (SQLite online backup API), manual `db:backup`
+- [x] Deployment guide in `docs/deploy.md`
+
+> Notes: `docker/Dockerfile` builds web + API, then `pnpm deploy --prod` keeps only the API's
+> external dependencies (workspace packages are bundled by tsup; a `createRequire` banner lets
+> bundled CommonJS call `require`). The runtime image runs as `node`, serves the built app from
+> `STATIC_DIR` (`src/server.ts`: hashed `/assets` cached for a year, everything else
+> `no-cache`, unknown non-API paths get `index.html`) and keeps everything on the `/data`
+> volume. `compose.yaml` (repo root) adds Caddy (`docker/Caddyfile`: HTTPS for `DOMAIN`, HSTS,
+> compression except the role-play stream, `flush_interval -1`) and sets
+> `BETTER_AUTH_URL=https://$DOMAIN`. `/api/health` checks the database and shows `APP_VERSION`.
+> Production logs are pino JSON lines (one per request, errors, backups); development keeps
+> readable request lines. Backups (D30) run nightly at `BACKUP_HOUR` and keep
+> `BACKUP_KEEP_DAYS`; pictures and audio are plain files to copy alongside (documented).
+> CI builds the image, starts it and checks health and the web app.
 
 ---
 

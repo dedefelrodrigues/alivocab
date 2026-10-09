@@ -24,7 +24,7 @@ Multi-user with login (invite-only sign-up), self-hosted later on a VPS with Doc
 | SRS        | FSRS via `ts-fsrs` |
 | TTS        | Web Speech API (default, free) + server voices with a disk cache: Microsoft Edge neural voices (free, no key, unofficial `msedge-tts`), OpenAI and Gemini (own key) |
 | Tooling    | Biome (lint + format), Vitest (unit), Playwright (e2e, later), GitHub Actions CI |
-| Deploy     | Single Docker image (API also serves the built SPA), docker-compose + Caddy (HTTPS), SQLite on a volume, Litestream or nightly backup |
+| Deploy     | Single Docker image (API also serves the built SPA), docker compose + Caddy (HTTPS), SQLite on a volume, nightly backups by the app |
 
 ## Repository layout (target)
 
@@ -39,7 +39,8 @@ packages/
   shared/         zod schemas + TS types shared by web and api (DTOs, enums)
   ai/             Provider registry & adapters on top of the AI SDK (server side)
   ui/             (optional) shared shadcn components if a second frontend appears
-docker/           Dockerfile, compose, Caddyfile
+docker/           Dockerfile, Caddyfile (compose.yaml is at the repo root)
+docs/             deploy.md (VPS setup, updates, backups, restore)
 ```
 
 Workspace packages are **source-only**: their `exports` point at `src/*.ts`. Vite, tsx and tsup
@@ -66,6 +67,8 @@ pnpm lint             # biome check
 pnpm format           # biome format --write
 pnpm db:generate      # drizzle-kit generate (after editing packages/db/src/schema)
 pnpm db:seed          # first admin from ADMIN_EMAIL/ADMIN_PASSWORD + prints a fresh invite code
+pnpm db:backup        # consistent copy of the database into BACKUP_DIR (nightly in production)
+docker compose up -d --build   # production: app + Caddy (needs DOMAIN in .env), see docs/deploy.md
 pnpm db:studio        # browse the SQLite DB (drizzle-kit studio)
 pnpm --filter @alivocab/api <script>   # run a script in one package
 ```
@@ -177,6 +180,18 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   be translated later.
 - Tests: domain logic in `core` needs unit tests (parsers, normalization, SRS seeding, answer
   checks). API routes get integration tests against an in-memory SQLite DB.
+
+## Production
+
+- Server code logs with `logger` (pino, `apps/api/src/lib/logger.ts`), not `console`; scripts may
+  print with `console`. Never log request bodies, cookies or keys.
+- A new env variable goes in `env.ts`, `.env.example` and, if operators set it, `docs/deploy.md`.
+- The API build bundles workspace packages and their dependencies. A runtime dependency that
+  can't be bundled (native, or CommonJS that loads files) goes in `apps/api` `dependencies` and
+  in tsup's `external`. A new workspace package needs its `package.json` copied in
+  `docker/Dockerfile`.
+- Check a production build without Docker: `pnpm build`, then run `node apps/api/dist/index.js`
+  with `NODE_ENV=production STATIC_DIR=apps/web/dist` (CI also builds and starts the image).
 
 ## Git workflow
 

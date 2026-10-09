@@ -1,14 +1,15 @@
 /**
- * Cloud pronunciation: speaks text with the learner's chosen provider (their own API key) and
- * caches the audio on disk by content, so each sentence is generated (and paid for) once.
+ * Cloud pronunciation: speaks text with the learner's chosen provider (Microsoft Edge voices
+ * without a key, or OpenAI / Gemini with their own key) and caches the audio on disk by
+ * content, so each sentence is generated (and paid for) once.
  */
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createSpeechModel, describeAiError, synthesize } from '@alivocab/ai';
+import { createSpeechModel, describeAiError, synthesize, synthesizeEdge } from '@alivocab/ai';
 import { normalizeText } from '@alivocab/core';
 import { schema } from '@alivocab/db';
-import { CLOUD_TTS, type CloudTtsProvider, cloudVoice } from '@alivocab/shared';
+import { CLOUD_TTS, type CloudTtsProvider, cloudVoice, languageName } from '@alivocab/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { AppDeps } from '../types.ts';
@@ -52,7 +53,12 @@ export async function speakText(
     });
   }
   const provider = profile.ttsProvider;
-  const voice = cloudVoice(provider, input.voice ?? profile.ttsVoice);
+  const voice = cloudVoice(provider, input.voice ?? profile.ttsVoice, input.lang);
+  if (!voice) {
+    throw new HTTPException(400, {
+      message: `${CLOUD_TTS[provider].label} has no ${languageName(input.lang)} voice.`,
+    });
+  }
   const hash = audioKey(provider, voice, input.lang, input.text);
 
   const cached = db.select().from(ttsCache).where(eq(ttsCache.hash, hash)).get();
@@ -60,29 +66,39 @@ export async function speakText(
   const pending = inFlight.get(hash);
   if (pending) return pending;
 
-  const credential = db
-    .select()
-    .from(aiCredentials)
-    .where(and(eq(aiCredentials.userId, userId), eq(aiCredentials.provider, provider)))
-    .orderBy(desc(aiCredentials.createdAt))
-    .get();
-  if (!credential) {
+  const credential =
+    provider === 'edge'
+      ? null
+      : db
+          .select()
+          .from(aiCredentials)
+          .where(and(eq(aiCredentials.userId, userId), eq(aiCredentials.provider, provider)))
+          .orderBy(desc(aiCredentials.createdAt))
+          .get();
+  if (provider !== 'edge' && !credential) {
     throw new HTTPException(400, {
       message: `Add your ${CLOUD_TTS[provider].label} API key in Settings → AI providers to use its voices.`,
     });
   }
 
   const job = (async () => {
-    const apiKey = decryptKey(deps.secretBox, credential, userId);
-    const request = { provider, apiKey, text: normalizeText(input.text), lang: input.lang, voice };
+    const apiKey = credential ? decryptKey(deps.secretBox, credential, userId) : '';
+    const text = normalizeText(input.text);
     let result: Awaited<ReturnType<typeof synthesize>>;
     try {
-      result = deps.synthesizeFn
-        ? await deps.synthesizeFn(request)
-        : await synthesize({
-            ...request,
-            model: createSpeechModel({ provider, apiKey, fetch: deps.fetchFn }),
-          });
+      if (deps.synthesizeFn) {
+        result = await deps.synthesizeFn({ provider, apiKey, text, lang: input.lang, voice });
+      } else if (provider === 'edge') {
+        result = await synthesizeEdge({ text, voice });
+      } else {
+        result = await synthesize({
+          provider,
+          text,
+          lang: input.lang,
+          voice,
+          model: createSpeechModel({ provider, apiKey, fetch: deps.fetchFn }),
+        });
+      }
     } catch (err) {
       throw new HTTPException(502, { message: describeAiError(err) });
     }

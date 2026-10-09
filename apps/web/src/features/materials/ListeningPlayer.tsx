@@ -1,4 +1,4 @@
-import { CLOUD_TTS, cloudVoice, type ListeningScript, type MaterialDto } from '@alivocab/shared';
+import { cloudVoice, cloudVoices, type ListeningScript, type MaterialDto } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Eye, EyeOff, Languages, Pause, Play, Volume2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,9 +21,9 @@ function useSpeakerVoices(lang: string, speakerCount: number) {
   return (speakerIndex: number): string | undefined => {
     if (speakerIndex <= 0 || speakerCount < 2) return undefined;
     if (provider !== 'browser') {
-      const mainVoice = cloudVoice(provider, main);
-      const others = CLOUD_TTS[provider].voices.filter((v) => v !== mainVoice);
-      return others[((speakerIndex - 1) * 3) % others.length];
+      const mainVoice = cloudVoice(provider, main, lang);
+      const others = cloudVoices(provider, lang).filter((v) => v.id !== mainVoice);
+      return others[((speakerIndex - 1) * 3) % Math.max(1, others.length)]?.id;
     }
     const others = voices.filter((v) => v.voiceURI !== main);
     return others[(speakerIndex - 1) % Math.max(1, others.length)]?.voiceURI;

@@ -192,11 +192,89 @@ export type InviteDto = {
 
 export type CloudTtsProvider = Exclude<(typeof TTS_PROVIDERS)[number], 'browser'>;
 
-/** Models and voices per cloud TTS provider. Voices work for any language. */
+export type TtsVoice = { id: string; label: string };
+
+/**
+ * Microsoft's neural voices behind Edge's "Read Aloud", per language (first = default). Unlike
+ * the OpenAI and Gemini voices, each one speaks only its own language.
+ */
+export const EDGE_VOICES: Record<string, readonly TtsVoice[]> = {
+  pl: [
+    { id: 'pl-PL-ZofiaNeural', label: 'Zofia (female)' },
+    { id: 'pl-PL-MarekNeural', label: 'Marek (male)' },
+  ],
+  en: [
+    { id: 'en-US-AvaNeural', label: 'Ava (US, female)' },
+    { id: 'en-US-AndrewNeural', label: 'Andrew (US, male)' },
+    { id: 'en-GB-SoniaNeural', label: 'Sonia (UK, female)' },
+    { id: 'en-GB-RyanNeural', label: 'Ryan (UK, male)' },
+  ],
+  pt: [
+    { id: 'pt-BR-FranciscaNeural', label: 'Francisca (Brazil, female)' },
+    { id: 'pt-BR-AntonioNeural', label: 'Antônio (Brazil, male)' },
+    { id: 'pt-PT-RaquelNeural', label: 'Raquel (Portugal, female)' },
+    { id: 'pt-PT-DuarteNeural', label: 'Duarte (Portugal, male)' },
+  ],
+  es: [
+    { id: 'es-ES-ElviraNeural', label: 'Elvira (Spain, female)' },
+    { id: 'es-ES-AlvaroNeural', label: 'Álvaro (Spain, male)' },
+    { id: 'es-MX-DaliaNeural', label: 'Dalia (Mexico, female)' },
+    { id: 'es-MX-JorgeNeural', label: 'Jorge (Mexico, male)' },
+  ],
+  fr: [
+    { id: 'fr-FR-DeniseNeural', label: 'Denise (female)' },
+    { id: 'fr-FR-HenriNeural', label: 'Henri (male)' },
+  ],
+  de: [
+    { id: 'de-DE-KatjaNeural', label: 'Katja (female)' },
+    { id: 'de-DE-ConradNeural', label: 'Conrad (male)' },
+  ],
+  it: [
+    { id: 'it-IT-ElsaNeural', label: 'Elsa (female)' },
+    { id: 'it-IT-DiegoNeural', label: 'Diego (male)' },
+  ],
+  uk: [
+    { id: 'uk-UA-PolinaNeural', label: 'Polina (female)' },
+    { id: 'uk-UA-OstapNeural', label: 'Ostap (male)' },
+  ],
+  nl: [
+    { id: 'nl-NL-ColetteNeural', label: 'Colette (female)' },
+    { id: 'nl-NL-MaartenNeural', label: 'Maarten (male)' },
+  ],
+  cs: [
+    { id: 'cs-CZ-VlastaNeural', label: 'Vlasta (female)' },
+    { id: 'cs-CZ-AntoninNeural', label: 'Antonín (male)' },
+  ],
+  sv: [
+    { id: 'sv-SE-SofieNeural', label: 'Sofie (female)' },
+    { id: 'sv-SE-MattiasNeural', label: 'Mattias (male)' },
+  ],
+  ro: [
+    { id: 'ro-RO-AlinaNeural', label: 'Alina (female)' },
+    { id: 'ro-RO-EmilNeural', label: 'Emil (male)' },
+  ],
+};
+
+/** Models and voices per cloud TTS provider. */
 export const CLOUD_TTS: Record<
   CloudTtsProvider,
-  { label: string; model: string; voices: readonly string[]; defaultVoice: string; note: string }
+  {
+    label: string;
+    model: string;
+    /** Every voice, the default first (see `cloudVoices()` for the ones that suit a language). */
+    voices: readonly string[];
+    /** Needs the learner's API key for this provider. */
+    needsKey: boolean;
+    note: string;
+  }
 > = {
+  edge: {
+    label: 'Microsoft Edge',
+    model: 'edge-read-aloud',
+    voices: Object.values(EDGE_VOICES).flatMap((list) => list.map((v) => v.id)),
+    needsKey: false,
+    note: 'Free natural voices, no key needed. Unofficial: uses the service behind Edge’s Read Aloud.',
+  },
   openai: {
     label: 'OpenAI',
     model: 'gpt-4o-mini-tts',
@@ -213,7 +291,7 @@ export const CLOUD_TTS: Record<
       'shimmer',
       'verse',
     ],
-    defaultVoice: 'coral',
+    needsKey: true,
     note: 'Natural voices; about $15 per million characters on your OpenAI account.',
   },
   google: {
@@ -231,22 +309,36 @@ export const CLOUD_TTS: Record<
       'Callirrhoe',
       'Enceladus',
     ],
-    defaultVoice: 'Kore',
+    needsKey: true,
     note: 'Uses your Gemini key; the free tier is rate-limited.',
   },
 };
 
-/** The voice a cloud provider uses: the learner's choice if it belongs to it, else the default. */
-export function cloudVoice(provider: CloudTtsProvider, voice: string | null | undefined): string {
-  const info = CLOUD_TTS[provider];
-  return voice && info.voices.includes(voice) ? voice : info.defaultVoice;
+/** The voices a cloud provider has for a language (OpenAI and Gemini voices speak them all). */
+export function cloudVoices(provider: CloudTtsProvider, lang: string): readonly TtsVoice[] {
+  if (provider === 'edge') return EDGE_VOICES[lang] ?? [];
+  return CLOUD_TTS[provider].voices.map((id) => ({ id, label: id }));
+}
+
+/**
+ * The voice to use for `lang`: the learner's choice if the provider has it for that language,
+ * else the provider's default for it. Null when the provider has no voice for the language.
+ */
+export function cloudVoice(
+  provider: CloudTtsProvider,
+  voice: string | null | undefined,
+  lang: string,
+): string | null {
+  const voices = cloudVoices(provider, lang);
+  if (voice && voices.some((v) => v.id === voice)) return voice;
+  return voices[0]?.id ?? null;
 }
 
 export const ttsRequestSchema = z.object({
   text: z.string().trim().min(1).max(600),
   lang: languageCodeSchema,
   /** Defaults to the learner's voice; dialogues pass a second voice for the other speaker. */
-  voice: z.string().trim().max(40).optional(),
+  voice: z.string().trim().max(60).optional(),
 });
 
 export type TtsResultDto = { url: string };

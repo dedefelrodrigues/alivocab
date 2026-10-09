@@ -3,8 +3,11 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { CLOUD_TTS, type CloudTtsProvider, languageName } from '@alivocab/shared';
 import { experimental_generateSpeech as generateSpeech, type SpeechModel } from 'ai';
 
+/** Providers served through the AI SDK (Edge has its own client, see edge-speech.ts). */
+export type SdkTtsProvider = Exclude<CloudTtsProvider, 'edge'>;
+
 export type SpeechModelInput = {
-  provider: CloudTtsProvider;
+  provider: SdkTtsProvider;
   apiKey: string;
   fetch?: typeof fetch;
 };
@@ -19,7 +22,7 @@ export function createSpeechModel({ provider, apiKey, fetch }: SpeechModelInput)
 
 export type SynthesizeInput = {
   model: SpeechModel;
-  provider: CloudTtsProvider;
+  provider: SdkTtsProvider;
   text: string;
   lang: string;
   voice: string;

@@ -110,7 +110,7 @@ export const LESSON_KINDS = ['listening', 'grammar', 'drill', 'sentence', 'rolep
 export type LessonKind = (typeof LESSON_KINDS)[number];
 
 /** `browser` = Web Speech (free); the others use the learner's saved API key for that provider. */
-export const TTS_PROVIDERS = ['browser', 'openai', 'google'] as const;
+export const TTS_PROVIDERS = ['browser', 'edge', 'openai', 'google'] as const;
 export type TtsProvider = (typeof TTS_PROVIDERS)[number];
 
 export const USER_ROLES = ['user', 'admin'] as const;

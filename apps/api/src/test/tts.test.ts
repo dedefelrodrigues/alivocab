@@ -82,6 +82,29 @@ describe('cloud pronunciation', () => {
     expect((await ctx.call('/api/tts/audio/..%2F..%2F.env', { cookie })).status).toBe(404);
   });
 
+  it('speaks with Microsoft Edge voices without a key, one voice set per language', async () => {
+    const ctx = setup();
+    const cookie = await ctx.createUser('a@test.dev');
+    await ctx.call('/api/me/profile', {
+      method: 'PATCH',
+      cookie,
+      body: { ttsProvider: 'edge', ttsVoice: 'pl-PL-MarekNeural' },
+    });
+    expect((await say(ctx, cookie, { text: 'Dzień dobry', lang: 'pl' })).status).toBe(200);
+    // The Polish voice can't read Portuguese: that language's default is used instead.
+    expect((await say(ctx, cookie, { text: 'Bom dia', lang: 'pt' })).status).toBe(200);
+    expect(
+      ctx.synthesizeFn.mock.calls.map((c) => [c[0].provider, c[0].voice, c[0].apiKey]),
+    ).toEqual([
+      ['edge', 'pl-PL-MarekNeural', ''],
+      ['edge', 'pt-BR-FranciscaNeural', ''],
+    ]);
+
+    const res = await say(ctx, cookie, { text: 'Hyvää päivää', lang: 'fi' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe('Microsoft Edge has no FI voice.');
+  });
+
   it('reports provider errors', async () => {
     const ctx = createTestApp({
       synthesizeFn: async () => {

@@ -31,8 +31,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D20 | Key check | "Test connection" lists the provider's models (no tokens spent) and offers them as default-model suggestions |
 | D21 | Shared-word edits | Dictionary fields (gender, forms, translations, IPA) are editable only while no other user has the word (or by an admin). Notes/mnemonics are always private and editable |
 | D22 | Generation transport | All AI output (API, browser, paste) is parsed by the same tolerant `core/import`. API calls use plain `generateText` + the parser (not provider-specific structured output), so every provider and free model behaves the same |
-| D24 | Lessons vs. flashcards | Flashcards (self-rated) stay as the quick review. Lessons mix exercises chosen per card and grade the same FSRS cards. Answer checking runs in the browser (core is shared), since grading only affects the learner's own schedule. Extra practice outside the schedule never changes due dates |
 | D23 | Pictures | Optional picture per word from free photo search (Wikimedia Commons and Openverse, no key; Pexels with an optional server key) or the user's own upload. **Auto-picked in the background after saving** (on by default, a profile setting), changeable later. The shared default lives on the lexeme; each user can pick their own or hide it. Stored locally as resized WebP, never hotlinked. See §4.4 |
+| D24 | Lessons vs. flashcards | Flashcards (self-rated) stay as the quick review. Lessons mix exercises chosen per card and grade the same FSRS cards. Answer checking runs in the browser (core is shared), since grading only affects the learner's own schedule. Extra practice outside the schedule never changes due dates |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.

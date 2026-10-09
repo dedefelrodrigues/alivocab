@@ -22,7 +22,7 @@ Multi-user with login (invite-only sign-up), self-hosted later on a VPS with Doc
 | Auth       | Better Auth (email + password, cookie sessions, Drizzle adapter) + custom invite-code gate |
 | AI         | Vercel AI SDK (`ai`) with direct provider packages: Anthropic, OpenAI, DeepSeek, Google (Gemini free tier), OpenRouter / any OpenAI-compatible endpoint. In browser: WebLLM (`@mlc-ai/web-llm`) and Chrome built-in AI (Prompt API). Plus a manual copy-prompt → paste-result flow |
 | SRS        | FSRS via `ts-fsrs` |
-| TTS        | Web Speech API (default, free) + optional cloud TTS (OpenAI / Azure / ElevenLabs) with server-side audio cache |
+| TTS        | Web Speech API (default, free) + server voices with a disk cache: Microsoft Edge neural voices (free, no key, unofficial `msedge-tts`), OpenAI and Gemini (own key) |
 | Tooling    | Biome (lint + format), Vitest (unit), Playwright (e2e, later), GitHub Actions CI |
 | Deploy     | Single Docker image (API also serves the built SPA), docker-compose + Caddy (HTTPS), SQLite on a volume, Litestream or nightly backup |
 

@@ -72,7 +72,7 @@ export function startOfLocalDay(now: Date, tzOffsetMinutes: number): Date {
   return new Date(Math.floor(local / DAY) * DAY + offsetMs);
 }
 
-function localDateKey(d: Date, tzOffsetMinutes: number): string {
+export function localDateKey(d: Date, tzOffsetMinutes: number): string {
   return new Date(d.getTime() - tzOffsetMinutes * 60_000).toISOString().slice(0, 10);
 }
 
@@ -458,6 +458,31 @@ export function gradeCard(
 
 // ── Summary ─────────────────────────────────────────────────────────────────
 
+/** Consecutive local days with at least one review, ending today (or yesterday). */
+export function streakDays(db: Db, userId: string, tzOffset: number, now = new Date()): number {
+  const days = new Set(
+    db
+      .select({ at: reviewLogs.reviewedAt })
+      .from(reviewLogs)
+      .where(
+        and(
+          eq(reviewLogs.userId, userId),
+          gte(reviewLogs.reviewedAt, new Date(now.getTime() - 400 * DAY)),
+        ),
+      )
+      .all()
+      .map((r) => localDateKey(r.at, tzOffset)),
+  );
+  let streak = 0;
+  let cursor = startOfLocalDay(now, tzOffset).getTime() + DAY / 2;
+  if (!days.has(localDateKey(new Date(cursor), tzOffset))) cursor -= DAY;
+  while (days.has(localDateKey(new Date(cursor), tzOffset))) {
+    streak++;
+    cursor -= DAY;
+  }
+  return streak;
+}
+
 export function reviewSummary(
   db: Db,
   userId: string,
@@ -497,27 +522,7 @@ export function reviewSummary(
     if (slot) slot.count++;
   }
 
-  // Consecutive local days with at least one review, ending today (or yesterday).
-  const days = new Set(
-    db
-      .select({ at: reviewLogs.reviewedAt })
-      .from(reviewLogs)
-      .where(
-        and(
-          eq(reviewLogs.userId, userId),
-          gte(reviewLogs.reviewedAt, new Date(now.getTime() - 400 * DAY)),
-        ),
-      )
-      .all()
-      .map((r) => localDateKey(r.at, tzOffset)),
-  );
-  let streakDays = 0;
-  let cursor = stats.dayStart.getTime() + DAY / 2;
-  if (!days.has(localDateKey(new Date(cursor), tzOffset))) cursor -= DAY;
-  while (days.has(localDateKey(new Date(cursor), tzOffset))) {
-    streakDays++;
-    cursor -= DAY;
-  }
+  const streak = streakDays(db, userId, tzOffset, now);
 
   const userThemes = db
     .select({ id: themes.id, name: themes.name })
@@ -530,7 +535,7 @@ export function reviewSummary(
     dueNow: Math.min(countDue(db, userId, undefined, now), reviewBudget),
     newAvailable: newCardIds(db, userId, undefined, newBudget).length,
     reviewedToday: stats.reviewedToday,
-    streakDays,
+    streakDays: streak,
     forecast,
     themes: userThemes.map((t) => ({
       id: t.id,

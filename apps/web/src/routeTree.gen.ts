@@ -14,8 +14,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteImport } from './routes/_app/admin'
+import { Route as AppLessonRouteImport } from './routes/_app/lesson'
 import { Route as AppReviewRouteImport } from './routes/_app/review'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppStatsRouteImport } from './routes/_app/stats'
 import { Route as AppThemesIndexRouteImport } from './routes/_app/themes/index'
 import { Route as AppThemesThemeIdRouteImport } from './routes/_app/themes/$themeId'
 import { Route as AppThemesNewRouteImport } from './routes/_app/themes/new'
@@ -44,6 +46,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLessonRoute = AppLessonRouteImport.update({
+  id: '/lesson',
+  path: '/lesson',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReviewRoute = AppReviewRouteImport.update({
   id: '/review',
   path: '/review',
@@ -52,6 +59,11 @@ const AppReviewRoute = AppReviewRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStatsRoute = AppStatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
   getParentRoute: () => AppRoute,
 } as any)
 const AppThemesIndexRoute = AppThemesIndexRouteImport.update({
@@ -75,8 +87,10 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
+  '/lesson': typeof AppLessonRoute
   '/review': typeof AppReviewRoute
   '/settings': typeof AppSettingsRoute
+  '/stats': typeof AppStatsRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
   '/themes/': typeof AppThemesIndexRoute
@@ -85,8 +99,10 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/admin': typeof AppAdminRoute
+  '/lesson': typeof AppLessonRoute
   '/review': typeof AppReviewRoute
   '/settings': typeof AppSettingsRoute
+  '/stats': typeof AppStatsRoute
   '/': typeof AppIndexRoute
   '/themes/$themeId': typeof AppThemesThemeIdRoute
   '/themes/new': typeof AppThemesNewRoute
@@ -98,8 +114,10 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/_app/admin': typeof AppAdminRoute
+  '/_app/lesson': typeof AppLessonRoute
   '/_app/review': typeof AppReviewRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/stats': typeof AppStatsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/themes/$themeId': typeof AppThemesThemeIdRoute
   '/_app/themes/new': typeof AppThemesNewRoute
@@ -112,8 +130,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/admin'
+    | '/lesson'
     | '/review'
     | '/settings'
+    | '/stats'
     | '/themes/$themeId'
     | '/themes/new'
     | '/themes/'
@@ -122,8 +142,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/admin'
+    | '/lesson'
     | '/review'
     | '/settings'
+    | '/stats'
     | '/'
     | '/themes/$themeId'
     | '/themes/new'
@@ -134,8 +156,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/_app/admin'
+    | '/_app/lesson'
     | '/_app/review'
     | '/_app/settings'
+    | '/_app/stats'
     | '/_app/'
     | '/_app/themes/$themeId'
     | '/_app/themes/new'
@@ -185,6 +209,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/lesson': {
+      id: '/_app/lesson'
+      path: '/lesson'
+      fullPath: '/lesson'
+      preLoaderRoute: typeof AppLessonRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/review': {
       id: '/_app/review'
       path: '/review'
@@ -197,6 +228,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/stats': {
+      id: '/_app/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof AppStatsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/themes/': {
@@ -225,8 +263,10 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
+  AppLessonRoute: typeof AppLessonRoute
   AppReviewRoute: typeof AppReviewRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStatsRoute: typeof AppStatsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppThemesThemeIdRoute: typeof AppThemesThemeIdRoute
   AppThemesNewRoute: typeof AppThemesNewRoute
@@ -235,8 +275,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
+  AppLessonRoute: AppLessonRoute,
   AppReviewRoute: AppReviewRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppStatsRoute: AppStatsRoute,
   AppIndexRoute: AppIndexRoute,
   AppThemesThemeIdRoute: AppThemesThemeIdRoute,
   AppThemesNewRoute: AppThemesNewRoute,

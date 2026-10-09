@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Flame, Layers } from 'lucide-react';
+import { Dumbbell, Flame, GraduationCap, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,9 +41,24 @@ export function ReviewSummaryCard() {
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {total > 0 && (
-          <Button asChild className="h-11 w-full text-base">
-            <Link to="/review">Start reviewing ({total})</Link>
+        {total > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button asChild className="h-11 text-base">
+              <Link to="/lesson">
+                <GraduationCap /> Start a lesson
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="h-11 text-base">
+              <Link to="/review">
+                <Layers /> Flashcards ({total})
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <Button asChild variant="outline" className="h-11 w-full text-base">
+            <Link to="/lesson" search={{ mode: 'practice' }}>
+              <Dumbbell /> Practice your weakest words
+            </Link>
           </Button>
         )}
         <div>

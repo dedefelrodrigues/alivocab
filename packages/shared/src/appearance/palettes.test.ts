@@ -17,6 +17,8 @@ const PAIRS: Array<[TokenName, TokenName, number]> = [
   ['card-foreground', 'flashcard-front', 4.5],
   ['card-foreground', 'flashcard-back', 4.5],
   ['primary', 'background', 3],
+  // Single-series charts (stats) draw their bars in primary on a card.
+  ['primary', 'card', 3],
   ['ring', 'background', 3],
   ['status-unknown', 'background', 3],
   ['status-recognize', 'background', 3],

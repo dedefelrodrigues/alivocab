@@ -1,4 +1,4 @@
-import type { MeDto } from '@alivocab/shared';
+import type { LessonMode, MeDto } from '@alivocab/shared';
 import { queryOptions } from '@tanstack/react-query';
 import { api, unwrap } from './api.ts';
 import { authClient } from './auth-client.ts';
@@ -65,4 +65,31 @@ export const reviewQueueQuery = (themeId: string | undefined, session: number) =
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 0,
     refetchOnWindowFocus: false,
+  });
+
+/** A lesson is fetched once per session, like the review queue. */
+export const lessonQuery = (themeId: string | undefined, mode: LessonMode, session: number) =>
+  queryOptions({
+    queryKey: ['lesson', themeId ?? 'all', mode, session],
+    queryFn: () =>
+      unwrap(
+        api.lessons.$get({
+          query: { tzOffset: tzOffset(), mode, ...(themeId ? { themeId } : {}) },
+        }),
+      ),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+
+export const statsQuery = (themeId: string | undefined, days: number) =>
+  queryOptions({
+    queryKey: ['stats', themeId ?? 'all', days],
+    queryFn: () =>
+      unwrap(
+        api.stats.$get({
+          query: { tzOffset: tzOffset(), days: String(days), ...(themeId ? { themeId } : {}) },
+        }),
+      ),
+    placeholderData: (previous) => previous,
   });

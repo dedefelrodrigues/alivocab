@@ -3,4 +3,5 @@ export * from './enums.ts';
 export * from './languages.ts';
 export * from './lesson.ts';
 export * from './review.ts';
+export * from './stats.ts';
 export * from './vocab.ts';

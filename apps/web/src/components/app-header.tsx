@@ -1,7 +1,18 @@
 import type { ColorMode } from '@alivocab/shared/appearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { BookOpen, Home, Layers, LogOut, Monitor, Moon, Settings, Shield, Sun } from 'lucide-react';
+import {
+  BarChart3,
+  BookOpen,
+  Home,
+  Layers,
+  LogOut,
+  Monitor,
+  Moon,
+  Settings,
+  Shield,
+  Sun,
+} from 'lucide-react';
 import { useAppearance } from '@/appearance/AppearanceProvider';
 import { Button } from '@/components/ui/button';
 import {
@@ -62,6 +73,10 @@ export function AppHeader() {
           <Link to="/themes" className={navLinkClass}>
             <BookOpen className="size-4" />
             <span className="hidden sm:inline">Themes</span>
+          </Link>
+          <Link to="/stats" className={navLinkClass} search={{}}>
+            <BarChart3 className="size-4" />
+            <span className="hidden sm:inline">Stats</span>
           </Link>
           <Link to="/settings" className={navLinkClass}>
             <Settings className="size-4" />

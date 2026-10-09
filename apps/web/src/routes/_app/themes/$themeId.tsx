@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
+  GraduationCap,
   ImageIcon,
   ImagePlus,
   Layers,
@@ -204,8 +205,13 @@ function ThemePage() {
 
       <div className="flex flex-wrap gap-2">
         <Button asChild disabled={!theme.wordCount}>
+          <Link to="/lesson" search={{ themeId: theme.id }}>
+            <GraduationCap /> Start a lesson
+          </Link>
+        </Button>
+        <Button asChild variant="outline" disabled={!theme.wordCount}>
           <Link to="/review" search={{ themeId: theme.id }}>
-            <Layers /> Review this theme
+            <Layers /> Flashcards
           </Link>
         </Button>
         <Button asChild variant="outline">

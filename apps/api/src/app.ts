@@ -10,6 +10,7 @@ import { lessonRoutes } from './routes/lessons.ts';
 import { meRoutes } from './routes/me.ts';
 import { mediaRoutes, pictureRoutes } from './routes/pictures.ts';
 import { reviewRoutes } from './routes/review.ts';
+import { statsRoutes } from './routes/stats.ts';
 import { themeRoutes } from './routes/themes.ts';
 import { wordRoutes } from './routes/words.ts';
 import type { AppDeps } from './types.ts';
@@ -45,6 +46,7 @@ export function createApp(deps: AppDeps) {
     .route('/words', wordRoutes(deps))
     .route('/review', reviewRoutes(deps))
     .route('/lessons', lessonRoutes(deps))
+    .route('/stats', statsRoutes(deps))
     .route('/pictures', pictureRoutes(deps))
     .route('/media', mediaRoutes(deps));
 }

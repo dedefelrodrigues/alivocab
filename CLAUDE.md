@@ -124,6 +124,9 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   shared zod schema), and three routes: `…/prompt` (copy-paste), `…/import` (pasted answer) and
   `…/generate` (saved API key via `openModel()` + `generateAnswer()`), each logged in
   `ai_generations`. See `lib/fill.ts` (examples, forms) and `lib/materials.ts` (listening, grammar).
+- Streaming chat (role-play) uses `streamConversation()` from `packages/ai` and returns its text
+  stream as the response; the client reads it with `fetch` (not the Hono RPC client) and parses
+  it with `parseRoleplayTurn()` as it arrives. Save turns in `onDone`, never from the client.
 - Pronunciation: the web app always calls `speak()` from `src/lib/speech.ts` (never
   `speechSynthesis` directly); cloud audio comes from `POST /api/tts` (`lib/tts.ts`, cached by
   content hash). Tests inject `synthesizeFn` instead of calling providers.

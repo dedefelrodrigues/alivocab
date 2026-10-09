@@ -7,6 +7,7 @@ import { credentialRoutes } from './routes/credentials.ts';
 import { generateRoutes } from './routes/generate.ts';
 import { health } from './routes/health.ts';
 import { lessonRoutes } from './routes/lessons.ts';
+import { materialRoutes } from './routes/materials.ts';
 import { meRoutes } from './routes/me.ts';
 import { mediaRoutes, pictureRoutes } from './routes/pictures.ts';
 import { reviewRoutes } from './routes/review.ts';
@@ -47,6 +48,7 @@ export function createApp(deps: AppDeps) {
     .route('/words', wordRoutes(deps))
     .route('/review', reviewRoutes(deps))
     .route('/lessons', lessonRoutes(deps))
+    .route('/materials', materialRoutes(deps))
     .route('/stats', statsRoutes(deps))
     .route('/tts', ttsRoutes(deps))
     .route('/pictures', pictureRoutes(deps))

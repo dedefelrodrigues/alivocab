@@ -257,3 +257,23 @@ export function extractRecords(raw: string, ctx: Ctx): Extracted {
   }
   return { format, records, issues };
 }
+
+/**
+ * The first JSON value in an AI answer, with the same tolerance as word imports (fences,
+ * reasoning blocks, broken JSON). Null when there is none.
+ */
+export function extractJsonValue(raw: string): unknown {
+  const text = raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/^﻿/, '')
+    .replace(/<think>[\s\S]*?<\/think>/g, '');
+  const blocks = codeBlocks(text);
+  for (const candidate of [...blocks, stripFences(text), text]) {
+    try {
+      return parseJsonLoose(candidate);
+    } catch {
+      // try the next candidate
+    }
+  }
+  return null;
+}

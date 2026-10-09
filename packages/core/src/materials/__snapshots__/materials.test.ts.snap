@@ -1,0 +1,95 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`material prompts > matches the grammar snapshot, with forms and an optional focus 1`] = `
+"You are an expert Polish teacher. Write a short grammar lesson in English for a learner at A2 (simple, everyday language), built around the vocabulary of the theme "Owoce":
+- jabłko (noun: apple; forms: gen_sg=jabłka)
+- obierać (verb: to peel)
+
+Choose the 2 or 3 grammar points these words need most (for example the cases or verb forms they appear in, gender agreement, or aspect pairs) and explain them using these words.
+
+Rules:
+- Explanations are in English, clear and practical, for a learner (no linguistics jargon without explaining it).
+- Every example is a short Polish sentence using the theme words, with its English translation.
+- Add a small table where it helps (e.g. a word in different cases, or a verb in different persons); otherwise use null.
+- End with 2 or 3 short tips or common mistakes.
+
+Output ONLY this JSON, no commentary:
+\`\`\`json
+{
+  "title": "<English title>",
+  "summary": "<one or two English sentences on what this lesson covers>",
+  "sections": [
+    {
+      "heading": "<topic>",
+      "explanation": "<English explanation>",
+      "examples": [
+        {
+          "text": "<Polish sentence>",
+          "translation": "<English>"
+        }
+      ],
+      "table": {
+        "headers": [
+          "<column>",
+          "<column>"
+        ],
+        "rows": [
+          [
+            "<cell>",
+            "<cell>"
+          ]
+        ]
+      }
+    }
+  ],
+  "tips": [
+    "<English tip>"
+  ]
+}
+\`\`\`"
+`;
+
+exports[`material prompts > matches the listening snapshot 1`] = `
+"You are an expert Polish teacher writing listening practice for a learner whose native language is English.
+
+Theme: "Owoce". Level: CEFR A2.
+Write a natural dialogue between two people (8 to 12 lines, alternating speakers) in a situation that fits the theme. Use as many of these Polish words as fit naturally (correctly inflected):
+- jabłko (noun: apple)
+- obierać (verb: to peel)
+
+Rules:
+- Keep sentences short and natural, as people really speak. Use common first names typical for Polish speakers.
+- Each line has a natural English translation.
+- Add 3 or 4 comprehension questions in English about the content, each with 3 or 4 options in English; "answer" is the index (starting at 0) of the correct option.
+
+Output ONLY this JSON, no commentary:
+\`\`\`json
+{
+  "title": "<short Polish title>",
+  "speakers": [
+    {
+      "id": "A",
+      "name": "<first name>"
+    }
+  ],
+  "lines": [
+    {
+      "speaker": "A",
+      "text": "<Polish line>",
+      "translation": "<English translation>"
+    }
+  ],
+  "questions": [
+    {
+      "question": "<English question>",
+      "options": [
+        "<option>",
+        "<option>",
+        "<option>"
+      ],
+      "answer": 0
+    }
+  ]
+}
+\`\`\`"
+`;

@@ -9,6 +9,11 @@ import {
   type FillResultDto,
   fillGenerateSchema,
   fillImportSchema,
+  MATERIAL_KINDS,
+  type MaterialKind,
+  materialGenerateSchema,
+  materialImportSchema,
+  materialPromptSchema,
   saveWordsSchema,
   type ThemeDetailDto,
   themeUpdateSchema,
@@ -26,6 +31,15 @@ import {
   saveFill,
   wordsNeeding,
 } from '../lib/fill.ts';
+import {
+  listMaterials,
+  MATERIAL_GENERATION_KIND,
+  MATERIAL_PROMPT_VERSION,
+  materialPrompt,
+  materialWords,
+  parseMaterial,
+  saveMaterial,
+} from '../lib/materials.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
@@ -43,9 +57,36 @@ import type { AppDeps, AuthedEnv } from '../types.ts';
 const { themes, themeLexemes, aiGenerations } = schema;
 
 const fillParams = z.object({ id: z.string().min(1), kind: z.enum(FILL_KINDS) });
+const materialParams = z.object({ id: z.string().min(1), kind: z.enum(MATERIAL_KINDS) });
 
 export const themeRoutes = (deps: AppDeps) => {
   const { db, auth, pictures } = deps;
+
+  /** Logs a listening-script or grammar-note generation. */
+  const logMaterial = (
+    kind: MaterialKind,
+    values: {
+      userId: string;
+      source: 'api' | 'manual';
+      prompt: string;
+      rawOutput: string | null;
+      parsedOk: boolean;
+      provider?: string;
+      model?: string;
+      error?: string;
+      tokensIn?: number;
+      tokensOut?: number;
+    },
+  ) =>
+    db
+      .insert(aiGenerations)
+      .values({
+        kind: MATERIAL_GENERATION_KIND[kind],
+        promptVersion: MATERIAL_PROMPT_VERSION[kind],
+        ...values,
+      })
+      .returning({ id: aiGenerations.id })
+      .get().id;
 
   /** Logs a fill-in generation (API call or pasted answer). */
   const logFill = (
@@ -269,6 +310,117 @@ export const themeRoutes = (deps: AppDeps) => {
             .where(eq(aiGenerations.id, generationId))
             .run();
           return c.json(result);
+        },
+      )
+      // Listening scripts and grammar notes written by AI for the theme.
+      .get('/:id/materials', (c) => {
+        const userId = c.get('user').id;
+        const theme = findOwnedTheme(db, userId, c.req.param('id'));
+        return c.json(listMaterials(db, userId, theme.id));
+      })
+      .post(
+        '/:id/materials/:kind/prompt',
+        validate('param', materialParams),
+        validate('json', materialPromptSchema),
+        (c) => {
+          const userId = c.get('user').id;
+          const { id, kind } = c.req.valid('param');
+          const theme = findOwnedTheme(db, userId, id);
+          const { offered } = materialWords(db, userId, theme, kind);
+          if (!offered.length)
+            throw new HTTPException(400, { message: 'Add words to the theme first' });
+          return c.json({
+            prompt: materialPrompt(kind, theme, offered, c.req.valid('json').options),
+            promptVersion: MATERIAL_PROMPT_VERSION[kind],
+          });
+        },
+      )
+      .post(
+        '/:id/materials/:kind/import',
+        validate('param', materialParams),
+        validate('json', materialImportSchema),
+        (c) => {
+          const userId = c.get('user').id;
+          const { id, kind } = c.req.valid('param');
+          const theme = findOwnedTheme(db, userId, id);
+          const input = c.req.valid('json');
+          const parsed = parseMaterial(kind, input.raw);
+          const generationId = logMaterial(kind, {
+            userId,
+            source: 'manual',
+            prompt: input.prompt ?? '',
+            rawOutput: input.raw,
+            parsedOk: parsed.ok,
+            error: parsed.ok ? undefined : parsed.error,
+          });
+          if (!parsed.ok) {
+            throw new HTTPException(422, { message: `Could not read the answer: ${parsed.error}` });
+          }
+          return c.json(saveMaterial(db, userId, theme, kind, parsed.content, generationId));
+        },
+      )
+      .post(
+        '/:id/materials/:kind/generate',
+        rateLimitPerUser({ max: 20, windowMs: 10 * 60_000 }),
+        validate('param', materialParams),
+        validate('json', materialGenerateSchema),
+        async (c) => {
+          const userId = c.get('user').id;
+          const { id, kind } = c.req.valid('param');
+          const theme = findOwnedTheme(db, userId, id);
+          const input = c.req.valid('json');
+          const { offered } = materialWords(db, userId, theme, kind);
+          if (!offered.length)
+            throw new HTTPException(400, { message: 'Add words to the theme first' });
+          const prompt = materialPrompt(kind, theme, offered, input.options);
+          const { model, provider, modelId, disableReasoning } = await openModel(
+            deps,
+            userId,
+            input.credentialId,
+            input.model,
+          );
+          let answer: Awaited<ReturnType<typeof generateAnswer>>;
+          try {
+            answer = await generateAnswer({
+              model,
+              prompt,
+              maxOutputTokens: 6_000,
+              disableReasoning,
+              emptyHint: 'returned nothing. Try a non-reasoning model.',
+            });
+          } catch (err) {
+            const message = describeAiError(err);
+            logMaterial(kind, {
+              userId,
+              source: 'api',
+              prompt,
+              rawOutput: null,
+              parsedOk: false,
+              provider,
+              model: modelId,
+              error: message,
+            });
+            throw new HTTPException(502, { message });
+          }
+          const parsed = parseMaterial(kind, answer.text);
+          const generationId = logMaterial(kind, {
+            userId,
+            source: 'api',
+            prompt,
+            rawOutput: answer.text,
+            parsedOk: parsed.ok,
+            provider,
+            model: modelId,
+            error: parsed.ok ? undefined : parsed.error,
+            tokensIn: answer.tokensIn,
+            tokensOut: answer.tokensOut,
+          });
+          if (!parsed.ok) {
+            throw new HTTPException(502, {
+              message: `The model’s answer could not be read (${parsed.error}). Try again or use another model.`,
+            });
+          }
+          return c.json(saveMaterial(db, userId, theme, kind, parsed.content, generationId));
         },
       )
       // Retry pictures for every word in the theme that still has none.

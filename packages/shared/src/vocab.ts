@@ -9,6 +9,7 @@ import {
   PARTS_OF_SPEECH,
   type PartOfSpeech,
   SEARCH_PROVIDERS,
+  type SearchProvider,
   WORD_STATUSES,
   type WordStatus,
 } from './enums.ts';
@@ -203,7 +204,7 @@ export type PictureDto = {
 
 /** A search hit shown in the picker (preview images load from the provider). */
 export type PictureSearchResult = {
-  provider: Exclude<ImageProvider, 'upload'>;
+  provider: SearchProvider;
   id: string;
   previewUrl: string;
   width: number;
@@ -225,6 +226,13 @@ export const pictureChoiceSchema = z.object({
 });
 
 export const pictureVisibilitySchema = z.object({ hidden: z.boolean() });
+
+/** A picture from any web address (an image, a search-engine result link or a page). */
+export const pictureLinkSchema = z.object({
+  url: z
+    .url({ protocol: /^https?$/, error: 'Paste a web address starting with http(s)://' })
+    .max(2048),
+});
 
 export type ThemeWordDto = {
   lexemeId: string;

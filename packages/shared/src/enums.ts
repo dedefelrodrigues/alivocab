@@ -82,7 +82,8 @@ export type TtsProvider = (typeof TTS_PROVIDERS)[number];
 export const USER_ROLES = ['user', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-export const IMAGE_PROVIDERS = ['wikimedia', 'openverse', 'pexels', 'upload'] as const;
+/** `upload` and `link` are pictures a learner brought themselves; only they see them. */
+export const IMAGE_PROVIDERS = ['wikimedia', 'openverse', 'pexels', 'upload', 'link'] as const;
 /** Providers that can be searched (everything except the user's own uploads). */
 export const SEARCH_PROVIDERS = ['wikimedia', 'openverse', 'pexels'] as const;
 export type SearchProvider = (typeof SEARCH_PROVIDERS)[number];

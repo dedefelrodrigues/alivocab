@@ -1,6 +1,7 @@
 import { schema } from '@alivocab/db';
 import {
   pictureChoiceSchema,
+  pictureLinkSchema,
   pictureVisibilitySchema,
   SHARED_WORD_FIELDS,
   statusUpdateSchema,
@@ -12,6 +13,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { MAX_UPLOAD_BYTES } from '../lib/pictures/store.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
+import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { reseedCards } from '../lib/srs.ts';
 import { validate } from '../lib/validate.ts';
 import { isSharedWithOthers } from '../lib/vocab.ts';
@@ -57,6 +59,19 @@ export const wordRoutes = ({ db, auth, pictures }: AppDeps) => {
         const data = Buffer.from(await file.arrayBuffer());
         return c.json(await pictures.upload(c.get('user').id, c.req.param('lexemeId'), data));
       },
+    )
+    .post(
+      '/:lexemeId/picture/link',
+      rateLimitPerUser({ max: 30, windowMs: 10 * 60_000 }),
+      validate('json', pictureLinkSchema),
+      async (c) =>
+        c.json(
+          await pictures.fromLink(
+            c.get('user').id,
+            c.req.param('lexemeId'),
+            c.req.valid('json').url,
+          ),
+        ),
     )
     .put('/:lexemeId/picture/visibility', validate('json', pictureVisibilitySchema), (c) => {
       pictures.setHidden(c.get('user').id, c.req.param('lexemeId'), c.req.valid('json').hidden);

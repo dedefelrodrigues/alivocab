@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { assertPublicUrl } from '../net.ts';
+import { findPageImage } from './links.ts';
 
 const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -14,35 +15,86 @@ export const MEDIA_NAME_RE = /^([a-f0-9]{32})(-thumb)?\.webp$/;
 
 export type StoredImage = { fileKey: string; width: number; height: number };
 
+/** Download problems the learner can act on (shown as is). */
+export class ImageDownloadError extends Error {
+  constructor(
+    readonly reason: 'not_image' | 'refused' | 'too_large' | 'unreachable',
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const MAX_PAGE_BYTES = 1024 * 1024;
+
 /**
- * Downloads an image from a provider URL. Every hop must resolve to a public address (SSRF),
- * redirects are followed manually (max 3) and the body is capped.
+ * Downloads an image. Every hop must resolve to a public address (SSRF), redirects are followed
+ * manually (max 3) and the body is capped. With `pageImage`, a link to a web page is followed to
+ * the page's main image (og:image), sending the page as Referer (some sites require it).
  */
-export async function downloadImage(url: string, fetchFn: typeof fetch = fetch): Promise<Buffer> {
+export async function downloadImage(
+  url: string,
+  fetchFn: typeof fetch = fetch,
+  { pageImage = false }: { pageImage?: boolean } = {},
+): Promise<Buffer> {
   let current = url;
-  for (let hop = 0; hop < 4; hop++) {
+  let referer: string | undefined;
+  let followPage = pageImage;
+  for (let hop = 0; hop < 5; hop++) {
     if (!/^https?:\/\//.test(current)) throw new Error('Unsupported image URL');
     await assertPublicUrl(current, false);
-    const res = await fetchFn(current, {
-      redirect: 'manual',
-      headers: { Accept: 'image/*' },
-      signal: AbortSignal.timeout(15_000),
-    });
+    let res: Response;
+    try {
+      res = await fetchFn(current, {
+        redirect: 'manual',
+        headers: {
+          Accept: followPage ? 'image/*,text/html;q=0.8' : 'image/*',
+          ...(referer ? { Referer: referer } : {}),
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (err) {
+      if ((err as Error).name === 'TimeoutError') {
+        throw new ImageDownloadError('unreachable', 'The site took too long to answer');
+      }
+      throw new ImageDownloadError('unreachable', 'Could not reach that site');
+    }
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
       if (!location) throw new Error('Redirect without location');
       current = new URL(location, current).toString();
       continue;
     }
+    if (res.status === 401 || res.status === 403) {
+      throw new ImageDownloadError('refused', 'That site does not allow downloading the image');
+    }
     if (!res.ok) throw new Error(`Image download failed (HTTP ${res.status})`);
     const type = res.headers.get('content-type') ?? '';
-    if (type && !type.startsWith('image/') && !type.startsWith('application/octet-stream')) {
-      throw new Error('Not an image');
-    }
     const declared = Number(res.headers.get('content-length') ?? 0);
-    if (declared > MAX_DOWNLOAD_BYTES) throw new Error('Image is too large');
+    if (followPage && type.startsWith('text/html')) {
+      if (declared > MAX_PAGE_BYTES) throw new ImageDownloadError('not_image', 'Page too large');
+      const html = Buffer.from(await res.arrayBuffer())
+        .subarray(0, MAX_PAGE_BYTES)
+        .toString('utf8');
+      const image = findPageImage(html, current);
+      if (!image) {
+        throw new ImageDownloadError('not_image', 'That page has no main picture we can use');
+      }
+      referer = current;
+      current = image;
+      followPage = false;
+      continue;
+    }
+    if (type && !type.startsWith('image/') && !type.startsWith('application/octet-stream')) {
+      throw new ImageDownloadError('not_image', 'That link is not a picture');
+    }
+    if (declared > MAX_DOWNLOAD_BYTES) {
+      throw new ImageDownloadError('too_large', 'That picture is larger than 10 MB');
+    }
     const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length > MAX_DOWNLOAD_BYTES) throw new Error('Image is too large');
+    if (buffer.length > MAX_DOWNLOAD_BYTES) {
+      throw new ImageDownloadError('too_large', 'That picture is larger than 10 MB');
+    }
     return buffer;
   }
   throw new Error('Too many redirects');

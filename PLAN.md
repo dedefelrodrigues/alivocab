@@ -211,6 +211,14 @@ the reason, and the valid rows still import.
 - **Storage**: downloads go through `assertPublicUrl` with manual redirects (SSRF guard), are resized
   with sharp to a 480 px WebP + a 96 px thumbnail under `MEDIA_DIR`, and are served by
   `/api/media/:name` (auth, immutable cache, PWA runtime cache). Never hotlink provider URLs.
+- **Bring your own** (`POST /api/words/:id/picture/link`, picker "Find one elsewhere"): buttons open
+  Google Images, Bing Images and Unsplash in a new tab with the search phrase (there is no usable
+  Google image API: the Custom Search JSON API is closed to new customers and ends on 2027-01-01).
+  The learner copies the picture and pastes it (an image on the clipboard or a `data:` image is
+  uploaded, a "Paste" button reads the clipboard on phones), pastes its address, or drags it into the
+  dialog. Search-engine result links are unwrapped (`imgurl`, `mediaurl`, …) and a page link uses the
+  page's `og:image`, sending the page as Referer. Like uploads, these are `link` pictures, private to
+  the learner (unknown license), credited "from <site>".
 - **Who sees what** (`resolvePictures`): hidden → none, else the user's own choice, else the shared
   default on the lexeme. Choosing a search result replaces the shared default only while no other
   user has the word (or as admin), mirroring D21.

@@ -5,11 +5,32 @@ const PROVIDER_LABEL = {
   openverse: 'Openverse',
   pexels: 'Pexels',
   upload: 'your upload',
+  link: 'a link',
 } as const;
 
 /** Credit line required by the licenses (creator, license, source). */
 export function Attribution({ image }: { image: PictureDto }) {
   if (image.provider === 'upload') return <span>Your picture</span>;
+  if (image.provider === 'link') {
+    return (
+      <span>
+        Your picture
+        {image.sourceUrl && (
+          <>
+            {' · from '}
+            <a
+              href={image.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline-offset-2 hover:underline"
+            >
+              {image.title ?? 'the web'}
+            </a>
+          </>
+        )}
+      </span>
+    );
+  }
   const link = 'underline-offset-2 hover:underline';
   return (
     <span>

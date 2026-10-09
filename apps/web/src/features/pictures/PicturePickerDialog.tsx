@@ -1,7 +1,7 @@
 import type { PictureSearchResult, SearchProvider } from '@alivocab/shared';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { EyeOff, Loader2, Search, Upload } from 'lucide-react';
-import { type FormEvent, useRef, useState } from 'react';
+import { ClipboardPaste, ExternalLink, EyeOff, Link2, Loader2, Search, Upload } from 'lucide-react';
+import { type ClipboardEvent, type DragEvent, type FormEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,35 @@ const PROVIDER_NAMES: Record<SearchProvider, string> = {
   openverse: 'Openverse',
   pexels: 'Pexels',
 };
+
+/** Image searches the learner can open in a new tab, to bring a picture back by pasting it. */
+const ELSEWHERE: Array<{ name: string; url: (q: string) => string }> = [
+  {
+    name: 'Google Images',
+    url: (q) => `https://www.google.com/search?udm=2&q=${encodeURIComponent(q)}`,
+  },
+  {
+    name: 'Bing Images',
+    url: (q) => `https://www.bing.com/images/search?q=${encodeURIComponent(q)}`,
+  },
+  {
+    name: 'Unsplash',
+    url: (q) =>
+      `https://unsplash.com/s/photos/${encodeURIComponent(q.trim().replace(/\s+/g, '-'))}`,
+  },
+];
+
+const canReadClipboard = () =>
+  typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function';
+
+const isWebLink = (text: string) => /^https?:\/\/\S+$/i.test(text.trim());
+const isDataImage = (text: string) => /^data:image\/[\w.+-]+;base64,/i.test(text.trim());
+
+/** A `data:image/…` address (Google Images thumbnails often copy as one) as a file. */
+async function dataUrlToFile(dataUrl: string): Promise<File> {
+  const blob = await (await fetch(dataUrl.trim())).blob();
+  return new File([blob], 'pasted-image', { type: blob.type });
+}
 
 const providersQuery = {
   queryKey: ['pictures', 'providers'],
@@ -48,6 +77,8 @@ export function PicturePickerDialog({
   /** The phrase last searched for; searching starts right away with the suggested one. */
   const [submitted, setSubmitted] = useState(initialQuery.trim());
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
+  const [link, setLink] = useState('');
+  const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const done = (message: string) => {
@@ -111,6 +142,84 @@ export function PicturePickerDialog({
     onError: (err) => toast.error(errorMessage(err)),
   });
 
+  const fromLink = useMutation({
+    mutationFn: (url: string) =>
+      unwrap(api.words[':lexemeId'].picture.link.$post({ param: { lexemeId }, json: { url } })),
+    onSuccess: () => done('Picture added'),
+    onError: (err) => toast.error(errorMessage(err)),
+  });
+
+  /** Uses whatever the learner brought: an image file, a data: image or a web address. */
+  const bring = async (item: File | string) => {
+    if (typeof item !== 'string') {
+      if (!item.type.startsWith('image/')) return void toast.error('That is not a picture');
+      if (item.size > MAX_UPLOAD) return void toast.error('Pictures can be at most 8 MB');
+      return upload.mutate(item);
+    }
+    const text = item.trim();
+    if (isDataImage(text)) return bring(await dataUrlToFile(text));
+    if (isWebLink(text)) return fromLink.mutate(text);
+    toast.error('Paste a picture, or a web address starting with https://');
+  };
+
+  const imageFile = (files: FileList | null | undefined) =>
+    Array.from(files ?? []).find((f) => f.type.startsWith('image/'));
+
+  /** Pasting anywhere in the dialog: an image on the clipboard is used right away. */
+  const onPaste = (e: ClipboardEvent) => {
+    const file = imageFile(e.clipboardData.files);
+    if (file) {
+      e.preventDefault();
+      void bring(file);
+    }
+  };
+
+  /** Pasting into the link field: a web address or data: image is used right away. */
+  const onLinkPaste = (e: ClipboardEvent<HTMLInputElement>) => {
+    if (imageFile(e.clipboardData.files)) return; // handled by the dialog
+    const text = e.clipboardData.getData('text/plain');
+    if (isWebLink(text) || isDataImage(text)) {
+      e.preventDefault();
+      setLink(isDataImage(text) ? '' : text.trim());
+      void bring(text);
+    }
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = imageFile(e.dataTransfer.files);
+    if (file) return void bring(file);
+    const text =
+      e.dataTransfer.getData('text/uri-list').split('\n')[0] ||
+      e.dataTransfer.getData('text/plain');
+    if (text) void bring(text);
+  };
+
+  /** The Paste button (handy on phones): reads an image, or else a link, from the clipboard. */
+  const pasteFromClipboard = async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (type) {
+          const blob = await item.getType(type);
+          return void bring(new File([blob], 'pasted-image', { type }));
+        }
+      }
+      for (const item of items) {
+        if (item.types.includes('text/plain')) {
+          const text = await (await item.getType('text/plain')).text();
+          if (isWebLink(text)) setLink(text.trim());
+          return void bring(text);
+        }
+      }
+      toast.error('Nothing to paste. Copy a picture or its address first.');
+    } catch {
+      toast.error('Could not read the clipboard. Paste into the field instead.');
+    }
+  };
+
   const hide = useMutation({
     mutationFn: () =>
       unwrap(
@@ -135,12 +244,27 @@ export function PicturePickerDialog({
     } else setSubmitted(q);
   };
 
-  const busy = choose.isPending || upload.isPending;
+  const busy = choose.isPending || upload.isPending || fromLink.isPending;
+  const elsewhereQuery = query.trim() || submitted || lemma;
   const usesPexels = results.some((r) => r.provider === 'pexels');
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        className={cn(
+          'max-h-[90dvh] overflow-y-auto sm:max-w-2xl',
+          dragging && 'ring-[3px] ring-ring/50',
+        )}
+        onPaste={onPaste}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={onDrop}
+      >
         <DialogHeader>
           <DialogTitle>Picture for “{lemma}”</DialogTitle>
           <DialogDescription>
@@ -224,6 +348,58 @@ export function PicturePickerDialog({
             , Wikimedia Commons and Openverse.
           </p>
         )}
+
+        <section aria-labelledby="picture-elsewhere" className="space-y-3 border-t pt-4">
+          <div>
+            <h3 id="picture-elsewhere" className="text-sm font-medium">
+              Find one elsewhere
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Open a search, pick a picture, then copy it (right-click or long-press → Copy image,
+              or Copy image address) and paste it below. You can also drag it here. Only you will
+              see pictures you bring.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ELSEWHERE.map((site) => (
+              <Button key={site.name} asChild variant="outline" size="sm">
+                <a href={site.url(elsewhereQuery)} target="_blank" rel="noreferrer">
+                  {site.name} <ExternalLink />
+                </a>
+              </Button>
+            ))}
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (link.trim()) void bring(link);
+            }}
+          >
+            <Input
+              aria-label="Paste a picture or its web address"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              onPaste={onLinkPaste}
+              placeholder="Paste a picture or its address"
+              inputMode="url"
+              disabled={busy}
+            />
+            {canReadClipboard() && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void pasteFromClipboard()}
+              >
+                <ClipboardPaste /> Paste
+              </Button>
+            )}
+            <Button type="submit" disabled={busy || !link.trim()}>
+              {fromLink.isPending ? <Loader2 className="animate-spin" /> : <Link2 />} Use
+            </Button>
+          </form>
+        </section>
 
         <div className="flex flex-wrap gap-2 border-t pt-4">
           <input

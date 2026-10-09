@@ -21,6 +21,8 @@ type Route = {
   calls: string[];
   fetchFn: typeof fetch;
   userAgents?: string[];
+  /** Referer header per requested URL. */
+  referers?: Map<string, string | null>;
   /** Most Wikimedia requests that were in flight at the same time. */
   maxCommonsInFlight?: () => number;
 };
@@ -48,6 +50,7 @@ function fakeWeb(
   let inFlight = 0;
   let maxInFlight = 0;
   const userAgents: string[] = [];
+  const referers = new Map<string, string | null>();
   const page = (pageid: number) => ({
     pageid,
     title: `File:Commons photo ${pageid}.jpg`,
@@ -89,6 +92,7 @@ function fakeWeb(
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
     userAgents.push(new Headers(init?.headers).get('user-agent') ?? '');
+    referers.set(url, new Headers(init?.headers).get('referer'));
     if (url.startsWith('https://commons.wikimedia.org/w/api.php?')) {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
@@ -124,11 +128,21 @@ function fakeWeb(
     const single = /api\.openverse\.org\/v1\/images\/([\w-]+)\/$/.exec(url);
     if (single?.[1]) return Response.json(hit(single[1]));
     if (url.startsWith('https://93.184.215.14/')) {
+      // A web page whose main picture is og:image, a page without one, a hotlink-protected image.
+      if (url.endsWith('/page.html')) {
+        return new Response('<head><meta property="og:image" content="/media/main.jpg"></head>', {
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }
+      if (url.endsWith('/plain.html')) {
+        return new Response('<p>no picture</p>', { headers: { 'content-type': 'text/html' } });
+      }
+      if (url.includes('forbidden')) return new Response('no', { status: 403 });
       return new Response(new Uint8Array(png), { headers: { 'content-type': 'image/png' } });
     }
     return new Response('not found', { status: 404 });
   });
-  return { calls, fetchFn, userAgents, maxCommonsInFlight: () => maxInFlight };
+  return { calls, fetchFn, userAgents, referers, maxCommonsInFlight: () => maxInFlight };
 }
 
 const word = (lemma: string, extra: Record<string, unknown> = {}) => ({
@@ -545,5 +559,99 @@ describe('picker performance', () => {
     });
     expect(res.status).toBe(200);
     expect(web.calls.some((u) => /\/v1\/images\/ov-2\/$/.test(u))).toBe(false);
+  });
+});
+
+describe('pictures from a link', () => {
+  const addLink = async (ctx: Awaited<ReturnType<typeof setupWith>>, url: string) => {
+    const lexemeId = (await ctx.detail()).words[0]?.lexemeId;
+    return ctx.call(`/api/words/${lexemeId}/picture/link`, {
+      method: 'POST',
+      cookie: ctx.cookie,
+      body: { url },
+    });
+  };
+
+  it('stores an image link as the learner’s private picture', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const res = await addLink(ctx, 'https://93.184.215.14/photos/bread.png');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      provider: 'link',
+      title: '93.184.215.14',
+      sourceUrl: 'https://93.184.215.14/photos/bread.png',
+      license: null,
+    });
+    expect((await ctx.detail()).words[0]?.image?.provider).toBe('link');
+    // Never the shared default, even for a word nobody else has.
+    expect(ctx.db.select().from(schema.lexemes).get()?.imageId).toBeNull();
+  });
+
+  it('unwraps Google Images result links', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const img = 'https://93.184.215.14/real/bread.png';
+    const res = await addLink(
+      ctx,
+      `https://www.google.com/imgres?imgurl=${encodeURIComponent(img)}&imgrefurl=https%3A%2F%2Fx.org`,
+    );
+    expect(res.status).toBe(200);
+    expect(web.calls).toContain(img);
+    expect(web.calls.some((u) => u.includes('google.com'))).toBe(false);
+  });
+
+  it('uses the main picture of a web page, sending the page as Referer', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const res = await addLink(ctx, 'https://93.184.215.14/page.html');
+    expect(res.status).toBe(200);
+    expect(web.referers?.get('https://93.184.215.14/media/main.jpg')).toBe(
+      'https://93.184.215.14/page.html',
+    );
+  });
+
+  it('explains what to do when a link cannot be used', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    const message = async (url: string) => {
+      const res = await addLink(ctx, url);
+      expect(res.status).toBe(422);
+      return ((await res.json()) as { error: string }).error;
+    };
+    expect(await message('https://93.184.215.14/forbidden.png')).toBe(
+      'That site does not allow downloading the image. Try copying the image itself and pasting it here instead.',
+    );
+    expect(await message('https://93.184.215.14/plain.html')).toMatch(
+      /^That page has no main picture/,
+    );
+    // Private addresses are refused (SSRF), without a request.
+    expect(await message('http://127.0.0.1/secret.png')).toMatch(
+      /^Could not download that picture/,
+    );
+    expect(web.calls.some((u) => u.includes('127.0.0.1'))).toBe(false);
+  });
+
+  it('rejects addresses that are not web links', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    expect((await addLink(ctx, 'file:///etc/passwd')).status).toBe(400);
+    expect((await addLink(ctx, 'not a link')).status).toBe(400);
+  });
+
+  it('is not visible to other learners of the same word', async () => {
+    const web = fakeWeb({});
+    const ctx = await setupWith(web, [word('chleb', { imageQuery: '' })]);
+    await addLink(ctx, 'https://93.184.215.14/photos/bread.png');
+    const bob = await ctx.createUser('bob@test.dev');
+    const theme = await json<ThemeSummaryDto>(
+      ctx.call('/api/themes', {
+        method: 'POST',
+        cookie: bob,
+        body: { name: 'B', words: [word('chleb', { imageQuery: '' })] },
+      }),
+    );
+    const bobs = await json<ThemeDetailDto>(ctx.call(`/api/themes/${theme.id}`, { cookie: bob }));
+    expect(bobs.words[0]?.image).toBeNull();
   });
 });

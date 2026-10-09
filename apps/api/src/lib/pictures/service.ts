@@ -7,8 +7,9 @@ import { schema } from '@alivocab/db';
 import type { PictureDto, PictureSearchResult, SearchProvider } from '@alivocab/shared';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { unwrapImageLink } from './links.ts';
 import { openverse, type ProviderHit, ProviderLimitError, pexels, wikimedia } from './providers.ts';
-import { downloadImage, type PictureStore } from './store.ts';
+import { downloadImage, ImageDownloadError, type PictureStore } from './store.ts';
 
 const { lexemes, lexemeImages, lexemeTranslations, userLexemes } = schema;
 type ImageRow = typeof lexemeImages.$inferSelect;
@@ -69,6 +70,12 @@ const PROVIDER_NAMES: Record<SearchProvider, string> = {
   openverse: 'Openverse',
   pexels: 'Pexels',
 };
+
+/**
+ * Pictures the learner brought themselves (a file, or a link from any site). Their license is
+ * unknown, so they are only ever shown to that learner, never used as the shared default.
+ */
+const PRIVATE_PROVIDERS = new Set<ImageRow['provider']>(['upload', 'link']);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -310,7 +317,7 @@ export function createPictureService(opts: PictureServiceOptions) {
         .from(lexemes)
         .where(eq(lexemes.id, lexemeId))
         .get();
-      if (image.provider !== 'upload' && (canSetDefault || !lexeme?.imageId)) {
+      if (!PRIVATE_PROVIDERS.has(image.provider) && (canSetDefault || !lexeme?.imageId)) {
         tx.update(lexemes).set({ imageId: image.id }).where(eq(lexemes.id, lexemeId)).run();
       }
     });
@@ -350,30 +357,72 @@ export function createPictureService(opts: PictureServiceOptions) {
     return toPictureDto(image);
   }
 
-  async function upload(userId: string, lexemeId: string, data: Buffer): Promise<PictureDto> {
-    ownLexeme(userId, lexemeId);
+  /** Stores a picture the learner brought, as their personal choice only. */
+  async function savePrivate(
+    userId: string,
+    lexemeId: string,
+    data: Buffer,
+    meta: { provider: 'upload' | 'link'; sourceUrl?: string; title?: string },
+  ): Promise<PictureDto> {
     let saved: Awaited<ReturnType<PictureStore['save']>>;
     try {
       saved = await store.save(data);
     } catch {
-      throw new HTTPException(422, { message: 'That file is not an image we can read' });
+      throw new HTTPException(422, {
+        message:
+          meta.provider === 'upload'
+            ? 'That file is not an image we can read'
+            : 'That link is not a picture we can read',
+      });
     }
     const image = db
       .insert(lexemeImages)
       .values({
         lexemeId,
-        provider: 'upload',
+        provider: meta.provider,
         providerId: saved.fileKey,
         fileKey: saved.fileKey,
         width: saved.width,
         height: saved.height,
-        license: 'Own upload',
+        title: meta.title ?? null,
+        license: meta.provider === 'upload' ? 'Own upload' : null,
+        sourceUrl: meta.sourceUrl ?? null,
         createdBy: userId,
       })
       .returning()
       .get();
     applyChoice(userId, lexemeId, image, false);
     return toPictureDto(image);
+  }
+
+  async function upload(userId: string, lexemeId: string, data: Buffer): Promise<PictureDto> {
+    ownLexeme(userId, lexemeId);
+    return savePrivate(userId, lexemeId, data, { provider: 'upload' });
+  }
+
+  /**
+   * A picture from any web address the learner pasted: an image link, a search-engine result
+   * link (unwrapped) or a page (its main image is used).
+   */
+  async function fromLink(userId: string, lexemeId: string, link: string): Promise<PictureDto> {
+    ownLexeme(userId, lexemeId);
+    const url = unwrapImageLink(link);
+    let data: Buffer;
+    try {
+      data = await downloadImage(url, fetchFn, { pageImage: true });
+    } catch (err) {
+      const message =
+        err instanceof ImageDownloadError ? err.message : 'Could not download that picture';
+      log(`picture link ${new URL(url).hostname} failed: ${(err as Error).message}`);
+      throw new HTTPException(422, {
+        message: `${message}. Try copying the image itself and pasting it here instead.`,
+      });
+    }
+    return savePrivate(userId, lexemeId, data, {
+      provider: 'link',
+      sourceUrl: url,
+      title: new URL(url).hostname.replace(/^www\./, ''),
+    });
   }
 
   function setHidden(userId: string, lexemeId: string, hidden: boolean) {
@@ -505,6 +554,7 @@ export function createPictureService(opts: PictureServiceOptions) {
     providers: () => [...configured],
     choose,
     upload,
+    fromLink,
     setHidden,
     enqueue,
     isPending: (lexemeId: string) => queued.has(lexemeId),

@@ -37,7 +37,7 @@ export const usersQuery = queryOptions({
 
 export const themesQuery = queryOptions({
   queryKey: ['themes'],
-  queryFn: () => unwrap(api.themes.$get()),
+  queryFn: () => unwrap(api.themes.$get({ query: {} })),
 });
 
 export const themeQuery = (id: string) =>

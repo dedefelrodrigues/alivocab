@@ -28,9 +28,9 @@ import type {
 } from '@alivocab/shared';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { type LanguageRow, requestLanguage } from './languages.ts';
 import { resolvePictures } from './pictures/resolve.ts';
-import { getOrCreateProfile } from './profile.ts';
-import { buildQueue, hydrateCards } from './srs.ts';
+import { buildQueue, hydrateCards, inLang } from './srs.ts';
 
 const {
   cards,
@@ -48,8 +48,8 @@ const OPTION_COUNT = 4;
 
 type PoolWord = ChoiceCandidate & { lang: string; image: PictureDto | null };
 
-/** Every word the learner has, as distractor candidates (per target language). */
-function loadPool(db: Db, userId: string, nativeLang: string) {
+/** Every word the learner has in the lesson's language, as distractor candidates. */
+function loadPool(db: Db, userId: string, language: LanguageRow) {
   const rows = db
     .select({
       id: lexemes.id,
@@ -60,7 +60,7 @@ function loadPool(db: Db, userId: string, nativeLang: string) {
     })
     .from(userLexemes)
     .innerJoin(lexemes, eq(lexemes.id, userLexemes.lexemeId))
-    .where(eq(userLexemes.userId, userId))
+    .where(and(eq(userLexemes.userId, userId), eq(lexemes.lang, language.lang)))
     .all();
   const ids = rows.map((r) => r.id);
   const translations = new Map<string, string[]>();
@@ -69,7 +69,10 @@ function loadPool(db: Db, userId: string, nativeLang: string) {
       .select()
       .from(lexemeTranslations)
       .where(
-        and(inArray(lexemeTranslations.lexemeId, ids), eq(lexemeTranslations.lang, nativeLang)),
+        and(
+          inArray(lexemeTranslations.lexemeId, ids),
+          eq(lexemeTranslations.lang, language.nativeLang),
+        ),
       )
       .orderBy(asc(lexemeTranslations.sort))
       .all()) {
@@ -131,7 +134,7 @@ function cardStates(db: Db, userId: string, cardIds: string[]) {
 function weakestCardIds(
   db: Db,
   userId: string,
-  themeId: string | undefined,
+  { lang, themeId }: { lang: string; themeId?: string },
   size: number,
   { withForms = false, withExamples = false } = {},
 ) {
@@ -147,6 +150,7 @@ function weakestCardIds(
         eq(cards.userId, userId),
         ne(cards.state, CARD_STATE.new),
         eq(cards.suspended, false),
+        inLang(lang),
         themeId
           ? inArray(
               cards.lexemeId,
@@ -183,17 +187,19 @@ function weakestCardIds(
 export function buildLesson(
   db: Db,
   userId: string,
-  opts: { themeId?: string; mode: LessonMode; size: number; tzOffset: number },
+  opts: { themeId?: string; lang?: string; mode: LessonMode; size: number; tzOffset: number },
   now = new Date(),
   rand: () => number = Math.random,
 ): LessonDto {
+  // A theme's language, else the one asked for, else the active one.
+  const language = requestLanguage(db, userId, opts);
   let lessonCards: ReviewCardDto[];
   let remaining = 0;
   if (opts.mode === 'due') {
     const queue = buildQueue(
       db,
       userId,
-      { themeId: opts.themeId, tzOffset: opts.tzOffset, limit: opts.size },
+      { themeId: opts.themeId, lang: language.lang, tzOffset: opts.tzOffset, limit: opts.size },
       now,
     );
     lessonCards = queue.cards;
@@ -202,7 +208,7 @@ export function buildLesson(
     lessonCards = hydrateCards(
       db,
       userId,
-      weakestCardIds(db, userId, opts.themeId, opts.size, {
+      weakestCardIds(db, userId, { lang: language.lang, themeId: opts.themeId }, opts.size, {
         withForms: opts.mode === 'drill',
         withExamples: opts.mode === 'translate',
       }),
@@ -212,8 +218,8 @@ export function buildLesson(
   }
   if (!lessonCards.length) return { mode: opts.mode, items: [], remaining };
 
-  const { nativeLang } = getOrCreateProfile(db, userId);
-  const { words, themesOf } = loadPool(db, userId, nativeLang);
+  const { nativeLang } = language;
+  const { words, themesOf } = loadPool(db, userId, language);
   const states = cardStates(
     db,
     userId,

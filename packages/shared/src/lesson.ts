@@ -1,6 +1,7 @@
 /** Lessons: a mix of exercises over due (or, for extra practice, weak) words. */
 import { z } from 'zod';
 import { EXERCISE_TYPES, type ExerciseKind } from './enums.ts';
+import { learningLangParam } from './languages.ts';
 import type { ReviewCardDto } from './review.ts';
 import type { PictureDto } from './vocab.ts';
 
@@ -18,6 +19,7 @@ export type LessonMode = (typeof LESSON_MODES)[number];
 
 export const lessonQuerySchema = z.object({
   themeId: z.string().min(1).optional(),
+  lang: learningLangParam,
   mode: z.enum(LESSON_MODES).default('due'),
   size: z.coerce.number().int().min(3).max(40).default(15),
   tzOffset: z.coerce.number().int().min(-840).max(840).default(0),

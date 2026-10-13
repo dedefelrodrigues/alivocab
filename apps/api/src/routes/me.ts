@@ -3,7 +3,7 @@ import { type MeDto, profileUpdateSchema, type UserRole } from '@alivocab/shared
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { syncActiveLanguage } from '../lib/languages.ts';
+import { listLanguages, syncActiveLanguage } from '../lib/languages.ts';
 import { getOrCreateProfile } from '../lib/profile.ts';
 import { validate } from '../lib/validate.ts';
 import { requireAuth } from '../middleware/auth.ts';
@@ -22,6 +22,7 @@ export const meRoutes = ({ db, auth }: AppDeps) =>
           role: (user.role === 'admin' ? 'admin' : 'user') satisfies UserRole,
         },
         profile: getOrCreateProfile(db, user.id),
+        languages: listLanguages(db, user.id),
       };
       return c.json(me);
     })

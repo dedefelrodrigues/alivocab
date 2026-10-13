@@ -9,16 +9,25 @@ import { languageCodeSchema } from './languages.ts';
 
 export const AI_SOURCE_SETTING_RE = /^(manual|browser|api:[\w-]+)$/;
 
+/** Settings kept per learning language (PLAN.md D31). */
+const languageSettingFields = {
+  nativeLang: languageCodeSchema,
+  ttsVoice: z.string().max(200).nullable(),
+  dailyNewLimit: z.number().int().min(0).max(200),
+  dailyReviewLimit: z.number().int().min(0).max(2000),
+};
+
+const nonEmpty = (v: object) => Object.keys(v).length > 0;
+
 export const profileUpdateSchema = z
   .object({
+    /** Switches the active learning language. */
     targetLang: languageCodeSchema,
-    nativeLang: languageCodeSchema,
+    /** These four apply to the active learning language. */
+    ...languageSettingFields,
     defaultWordCount: z.number().int().min(5).max(100),
     defaultAiSource: z.string().regex(AI_SOURCE_SETTING_RE),
     ttsProvider: z.enum(TTS_PROVIDERS),
-    ttsVoice: z.string().max(200).nullable(),
-    dailyNewLimit: z.number().int().min(0).max(200),
-    dailyReviewLimit: z.number().int().min(0).max(2000),
     colorPalette: z
       .string()
       .refine((v) => v === 'auto' || getPalette(v) !== undefined, 'Unknown palette'),
@@ -27,7 +36,7 @@ export const profileUpdateSchema = z
     advancedMode: z.boolean(),
   })
   .partial()
-  .refine((v) => Object.keys(v).length > 0, 'Nothing to update');
+  .refine(nonEmpty, 'Nothing to update');
 
 export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
 
@@ -50,7 +59,42 @@ export type ProfileDto = {
 export type MeDto = {
   user: { id: string; name: string; email: string; role: UserRole };
   profile: ProfileDto;
+  languages: LearningLanguageDto[];
 };
+
+// ── Learning languages ──────────────────────────────────────────────────────
+
+export type LearningLanguageDto = {
+  lang: string;
+  nativeLang: string;
+  dailyNewLimit: number;
+  dailyReviewLimit: number;
+  ttsVoice: string | null;
+  /** The profile's `targetLang`. */
+  active: boolean;
+  /** Hidden from the switcher; words and progress are kept. */
+  archived: boolean;
+  createdAt: string;
+};
+
+/** Adds a language (or brings back an archived one). */
+export const languageAddSchema = z
+  .object({
+    lang: languageCodeSchema,
+    /** Default: the active language's translation language. */
+    nativeLang: languageCodeSchema.optional(),
+  })
+  .refine((v) => v.lang !== v.nativeLang, {
+    message: 'Translations need to be in another language',
+    path: ['nativeLang'],
+  });
+export type LanguageAdd = z.infer<typeof languageAddSchema>;
+
+export const languageUpdateSchema = z
+  .object(languageSettingFields)
+  .partial()
+  .refine(nonEmpty, 'Nothing to update');
+export type LanguageUpdate = z.infer<typeof languageUpdateSchema>;
 
 // ── AI credentials ──────────────────────────────────────────────────────────
 

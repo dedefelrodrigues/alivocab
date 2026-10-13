@@ -563,12 +563,12 @@ translation edits). Delivered on `feat/multi-language` in four steps, released t
      the old profile columns (so v1.0 can be rolled back to)
    - [x] Tests: backfill on a v1.0 database, profile read/write-through, switching languages
 2. **API scoped by language**
-   - [ ] `/api/languages` (list, add, update, archive); `languages` on `MeDto`
-   - [ ] `lang` on queue / summary / lessons / stats queries; an `inLang()` filter next to `inTheme()`;
+   - [x] `/api/languages` (list, add, update, archive); `languages` on `MeDto`
+   - [x] `lang` on queue / summary / lessons / stats queries; an `inLang()` filter next to `inTheme()`;
      daily budgets per language; translations in each word's own translation language
      (`hydrateCards`, `loadPool`, stats, word edits)
-   - [ ] Theme creation and proposals take the requested language instead of the profile's
-   - [ ] Tests with two languages: queue isolation, budgets, stats, theme creation, translation edits
+   - [x] Theme creation and proposals take the requested language instead of the profile's
+   - [x] Tests with two languages: queue isolation, budgets, stats, theme creation, translation edits
 3. **Web**
    - [ ] Language switcher in the header ("Add a language"), saved as the active language
    - [ ] Settings → Learning: list of languages with translation language, limits and voice each

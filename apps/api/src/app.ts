@@ -9,6 +9,7 @@ import { adminRoutes } from './routes/admin.ts';
 import { credentialRoutes } from './routes/credentials.ts';
 import { generateRoutes } from './routes/generate.ts';
 import { healthRoutes } from './routes/health.ts';
+import { languageRoutes } from './routes/languages.ts';
 import { lessonRoutes } from './routes/lessons.ts';
 import { logRoutes } from './routes/logs.ts';
 import { materialRoutes } from './routes/materials.ts';
@@ -66,6 +67,7 @@ export function createApp(deps: AppDeps) {
   return app
     .route('/health', healthRoutes(deps))
     .route('/me', meRoutes(deps))
+    .route('/languages', languageRoutes(deps))
     .route('/credentials', credentialRoutes(deps))
     .route('/admin', adminRoutes(deps))
     .route('/generate', generateRoutes(deps))

@@ -11,7 +11,7 @@ import {
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { openModel } from '../lib/ai-model.ts';
-import { getOrCreateProfile } from '../lib/profile.ts';
+import { requestLanguage } from '../lib/languages.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
 import { enrichProposal, findOwnedTheme, themeLemmas } from '../lib/vocab.ts';
@@ -23,8 +23,8 @@ const BATCH_SIZE = 25;
 export const generateRoutes = (deps: AppDeps) => {
   const { db, auth } = deps;
 
-  /** Languages come from the theme being extended, otherwise from the profile. */
-  const context = (userId: string, themeId?: string) => {
+  /** Languages come from the theme being extended, else the requested (or active) language. */
+  const context = (userId: string, themeId?: string, lang?: string) => {
     if (themeId) {
       const theme = findOwnedTheme(db, userId, themeId);
       return {
@@ -34,11 +34,11 @@ export const generateRoutes = (deps: AppDeps) => {
         avoid: themeLemmas(db, theme.id),
       };
     }
-    const profile = getOrCreateProfile(db, userId);
+    const language = requestLanguage(db, userId, { lang });
     return {
-      lang: profile.targetLang,
-      targetLang: profile.targetLang,
-      nativeLang: profile.nativeLang,
+      lang: language.lang,
+      targetLang: language.lang,
+      nativeLang: language.nativeLang,
       avoid: [] as string[],
     };
   };
@@ -67,7 +67,7 @@ export const generateRoutes = (deps: AppDeps) => {
       // The prompt for copy-paste and in-browser models.
       .post('/prompt', validate('json', promptRequestSchema), (c) => {
         const input = c.req.valid('json');
-        const ctx = context(c.get('user').id, input.themeId);
+        const ctx = context(c.get('user').id, input.themeId, input.lang);
         const prompt = buildVocabPrompt({ ...ctx, ...input });
         return c.json({ prompt, promptVersion: VOCAB_PROMPT_VERSION, avoid: ctx.avoid });
       })
@@ -79,7 +79,7 @@ export const generateRoutes = (deps: AppDeps) => {
         async (c) => {
           const userId = c.get('user').id;
           const input = c.req.valid('json');
-          const ctx = context(userId, input.themeId);
+          const ctx = context(userId, input.themeId, input.lang);
           const { model, provider, modelId, disableReasoning } = await openModel(
             deps,
             userId,
@@ -142,7 +142,7 @@ export const generateRoutes = (deps: AppDeps) => {
         (c) => {
           const userId = c.get('user').id;
           const input = c.req.valid('json');
-          const ctx = context(userId, input.themeId);
+          const ctx = context(userId, input.themeId, input.lang);
           const { words, issues } = parseVocabulary(input.raw, ctx);
           const generationId = logGeneration({
             userId,

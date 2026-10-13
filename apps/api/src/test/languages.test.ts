@@ -2,7 +2,16 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDb, MIGRATIONS_DIR, runMigrations, schema } from '@alivocab/db';
-import type { ProfileDto, ReviewQueueDto } from '@alivocab/shared';
+import type {
+  LearningLanguageDto,
+  LessonDto,
+  MeDto,
+  ProfileDto,
+  ReviewQueueDto,
+  ReviewSummaryDto,
+  StatsDto,
+  ThemeSummaryDto,
+} from '@alivocab/shared';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createTestApp } from './helpers.ts';
@@ -157,5 +166,180 @@ describe('active learning language', () => {
       await call('/api/review/queue?tzOffset=0', { cookie })
     ).json()) as ReviewQueueDto;
     expect(queue.limits.newPerDay).toBe(12);
+  });
+});
+
+// ── Several languages side by side ──────────────────────────────────────────
+
+const w = (lemma: string) => ({
+  lemma,
+  pos: 'noun',
+  translations: [`${lemma}-tr`],
+  status: 'unknown',
+});
+
+async function json<T>(res: Response | Promise<Response>): Promise<T> {
+  return (await (await res).json()) as T;
+}
+
+/** Polish (active, English translations) and Spanish (Portuguese translations), a theme each. */
+async function twoLanguages() {
+  const ctx = createTestApp();
+  const cookie = await ctx.createUser('a@test.dev');
+  const added = await ctx.call('/api/languages', {
+    method: 'POST',
+    cookie,
+    body: { lang: 'es', nativeLang: 'pt' },
+  });
+  expect(added.status).toBe(201);
+  const theme = (body: object) =>
+    json<ThemeSummaryDto>(ctx.call('/api/themes', { method: 'POST', cookie, body }));
+  const pl = await theme({ name: 'Dom', words: [w('dom'), w('kot')] });
+  const es = await theme({ name: 'Casa', lang: 'es', words: [w('casa'), w('gato'), w('perro')] });
+  const get = <T>(path: string) => json<T>(ctx.call(path, { cookie }));
+  const send = (method: string, path: string, body?: unknown) =>
+    ctx.call(path, { method, cookie, body });
+  const lexemeId = (lemma: string) =>
+    ctx.db.select().from(schema.lexemes).where(eq(schema.lexemes.lemma, lemma)).get()?.id ?? '';
+  return { ...ctx, cookie, pl, es, get, send, lexemeId };
+}
+
+const lemmas = (cards: { lemma: string }[]) => [...new Set(cards.map((c) => c.lemma))].sort();
+
+describe('learning languages API', () => {
+  it('adds, updates, archives and restores languages', async () => {
+    const { get, send, call, createUser } = await twoLanguages();
+    expect(await get<LearningLanguageDto[]>('/api/languages')).toMatchObject([
+      { lang: 'pl', nativeLang: 'en', active: true, archived: false },
+      { lang: 'es', nativeLang: 'pt', active: false, dailyNewLimit: 20, ttsVoice: null },
+    ]);
+    expect((await get<MeDto>('/api/me')).languages).toHaveLength(2);
+
+    expect((await send('POST', '/api/languages', { lang: 'es' })).status).toBe(200);
+    expect((await send('POST', '/api/languages', { lang: 'fr', nativeLang: 'fr' })).status).toBe(
+      400,
+    );
+    // Translations would default to English, the language itself.
+    expect((await send('POST', '/api/languages', { lang: 'en' })).status).toBe(400);
+
+    const updated = await send('PATCH', '/api/languages/es', {
+      dailyNewLimit: 3,
+      ttsVoice: 'Puck',
+    });
+    expect(await updated.json()).toMatchObject({ lang: 'es', dailyNewLimit: 3, ttsVoice: 'Puck' });
+    expect((await send('PATCH', '/api/languages/es', { nativeLang: 'es' })).status).toBe(400);
+    expect((await send('PATCH', '/api/languages/fr', { dailyNewLimit: 3 })).status).toBe(404);
+    expect((await send('PATCH', '/api/languages/xyz', { dailyNewLimit: 3 })).status).toBe(400);
+
+    expect((await send('DELETE', '/api/languages/pl')).status).toBe(400);
+    expect((await send('DELETE', '/api/languages/es')).status).toBe(204);
+    expect((await get<LearningLanguageDto[]>('/api/languages'))[1]).toMatchObject({
+      lang: 'es',
+      archived: true,
+    });
+    // Coming back keeps the settings.
+    const restored = await send('POST', '/api/languages', { lang: 'es' });
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({ archived: false, dailyNewLimit: 3 });
+
+    // Another learner has only their own default language.
+    const bob = await createUser('bob@test.dev');
+    expect(await json(call('/api/languages', { cookie: bob }))).toMatchObject([{ lang: 'pl' }]);
+    expect((await call('/api/languages/es', { method: 'DELETE', cookie: bob })).status).toBe(404);
+  });
+
+  it('creates and lists themes per language', async () => {
+    const { pl, es, get, send } = await twoLanguages();
+    expect(pl).toMatchObject({ targetLang: 'pl', nativeLang: 'en' });
+    expect(es).toMatchObject({ targetLang: 'es', nativeLang: 'pt' });
+    expect((await get<ThemeSummaryDto[]>('/api/themes')).map((t) => t.name)).toEqual(['Dom']);
+    expect((await get<ThemeSummaryDto[]>('/api/themes?lang=es')).map((t) => t.name)).toEqual([
+      'Casa',
+    ]);
+    expect((await send('GET', '/api/themes?lang=fr')).status).toBe(404);
+    expect((await send('POST', '/api/themes', { name: 'Maison', lang: 'fr' })).status).toBe(404);
+  });
+
+  it('applies a new translation language to the language’s themes', async () => {
+    const { es, get, send } = await twoLanguages();
+    await send('PATCH', '/api/languages/es', { nativeLang: 'en' });
+    const [theme] = await get<ThemeSummaryDto[]>('/api/themes?lang=es');
+    expect(theme).toMatchObject({ nativeLang: 'en', updatedAt: es.updatedAt });
+  });
+
+  it('builds proposal prompts for the requested language', async () => {
+    const { send } = await twoLanguages();
+    const res = await send('POST', '/api/generate/prompt', {
+      themeName: 'Food',
+      count: 10,
+      lang: 'es',
+    });
+    const { prompt } = (await res.json()) as { prompt: string };
+    expect(prompt).toContain('Spanish');
+    expect(prompt).toContain('Portuguese');
+    expect(prompt).not.toContain('Polish');
+  });
+});
+
+describe('scoped by language', () => {
+  it('keeps queues, limits and translations apart', async () => {
+    const { get, send, es } = await twoLanguages();
+    await send('PATCH', '/api/languages/es', { dailyNewLimit: 1 });
+
+    const polish = await get<ReviewQueueDto>('/api/review/queue?tzOffset=0');
+    expect(lemmas(polish.cards)).toEqual(['dom', 'kot']);
+    expect(polish.cards[0]).toMatchObject({ lang: 'pl', nativeLang: 'en' });
+    expect(polish.limits.newPerDay).toBe(20);
+
+    const spanish = await get<ReviewQueueDto>('/api/review/queue?tzOffset=0&lang=es');
+    expect(spanish.cards).toHaveLength(1);
+    expect(spanish.cards[0]).toMatchObject({ lang: 'es', nativeLang: 'pt' });
+    expect(spanish.cards[0]?.translations).toEqual([`${spanish.cards[0]?.lemma}-tr`]);
+    expect(spanish.limits.newPerDay).toBe(1);
+    // A theme's queue uses its language's limits.
+    const themeQueue = await get<ReviewQueueDto>(`/api/review/queue?tzOffset=0&themeId=${es.id}`);
+    expect(themeQueue.limits.newPerDay).toBe(1);
+
+    // Learning a Spanish word uses up Spanish's new-word budget, not Polish's.
+    const card = spanish.cards[0];
+    expect(
+      (await send('POST', `/api/review/cards/${card?.cardId}`, { rating: 'good' })).status,
+    ).toBe(200);
+    expect((await get<ReviewQueueDto>('/api/review/queue?tzOffset=0&lang=es')).newCount).toBe(0);
+    const after = await get<ReviewQueueDto>('/api/review/queue?tzOffset=0');
+    expect([after.newCount, after.newToday]).toEqual([2, 0]);
+
+    expect((await send('GET', '/api/review/queue?tzOffset=0&lang=fr')).status).toBe(404);
+  });
+
+  it('scopes the summary, lessons and stats', async () => {
+    const { get } = await twoLanguages();
+    const summary = await get<ReviewSummaryDto>('/api/review/summary?tzOffset=0&lang=es');
+    expect(summary.themes.map((t) => t.name)).toEqual(['Casa']);
+    expect(summary.newAvailable).toBe(3);
+    expect((await get<ReviewSummaryDto>('/api/review/summary?tzOffset=0')).themes).toHaveLength(1);
+
+    const lesson = await get<LessonDto>('/api/lessons?tzOffset=0&lang=es');
+    expect(lemmas(lesson.items.map((i) => i.card))).toEqual(['casa', 'gato', 'perro']);
+
+    const stats = await get<StatsDto>('/api/stats?tzOffset=0&lang=es');
+    expect(stats.words.map((x) => x.lemma).sort()).toEqual(['casa', 'gato', 'perro']);
+    expect(stats.words[0]?.translations).toEqual([`${stats.words[0]?.lemma}-tr`]);
+    expect((await get<StatsDto>('/api/stats?tzOffset=0')).totals.words).toBe(2);
+  });
+
+  it('stores edited translations in the word’s own translation language', async () => {
+    const { send, db, lexemeId } = await twoLanguages();
+    const gato = lexemeId('gato');
+    expect((await send('PATCH', `/api/words/${gato}`, { translations: ['gato'] })).status).toBe(
+      200,
+    );
+    expect(
+      db
+        .select({ lang: schema.lexemeTranslations.lang, text: schema.lexemeTranslations.text })
+        .from(schema.lexemeTranslations)
+        .where(eq(schema.lexemeTranslations.lexemeId, gato))
+        .all(),
+    ).toEqual([{ lang: 'pt', text: 'gato' }]);
   });
 });

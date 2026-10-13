@@ -22,6 +22,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { AppDeps } from '../types.ts';
 import { recordLog } from './activity.ts';
 import { decryptKey } from './credentials.ts';
+import { getLanguage } from './languages.ts';
 import { getOrCreateProfile } from './profile.ts';
 
 const { aiCredentials, ttsCache } = schema;
@@ -84,7 +85,10 @@ export async function speakText(
     });
   }
   const chosen = profile.ttsProvider;
-  const mainVoice = cloudVoice(chosen, profile.ttsVoice, input.lang);
+  // Each learning language has its own voice (empty: the provider's default for it).
+  const learning = getLanguage(db, userId, input.lang);
+  const ownVoice = learning ? learning.ttsVoice : profile.ttsVoice;
+  const mainVoice = cloudVoice(chosen, ownVoice, input.lang);
   // A dialogue's second speaker asks for another voice; keep them apart after a fallback too.
   const secondSpeaker = !!input.voice && input.voice !== mainVoice;
   const chain = ttsChain(chosen);
@@ -96,7 +100,7 @@ export async function speakText(
     const voices = cloudVoices(provider, input.lang);
     const voice =
       provider === chosen
-        ? cloudVoice(provider, input.voice ?? profile.ttsVoice, input.lang)
+        ? cloudVoice(provider, input.voice ?? ownVoice, input.lang)
         : (secondSpeaker ? (voices[1] ?? voices[0]) : voices[0])?.id;
     const fail = (reason: string) => failures.push({ provider, reason });
     if (!voice) {

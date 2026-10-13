@@ -227,7 +227,7 @@ describe('summary', () => {
     const [card] = buildQueue(db, userId, { tzOffset: 0, limit: 50 }, now).cards;
     gradeCard(db, userId, card?.cardId ?? '', { rating: 'good', exerciseType: 'flashcard' }, now);
 
-    const summary = reviewSummary(db, userId, 0, now);
+    const summary = reviewSummary(db, userId, { tzOffset: 0 }, now);
     expect(summary.reviewedToday).toBe(1);
     expect(summary.streakDays).toBe(1);
     expect(summary.forecast).toHaveLength(7);

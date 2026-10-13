@@ -1,10 +1,12 @@
 /** Progress statistics (the Stats page). */
 import { z } from 'zod';
 import type { PartOfSpeech, WordStatus } from './enums.ts';
+import { learningLangParam } from './languages.ts';
 import type { PictureDto, StatusCounts } from './vocab.ts';
 
 export const statsQuerySchema = z.object({
   themeId: z.string().min(1).optional(),
+  lang: learningLangParam,
   tzOffset: z.coerce.number().int().min(-840).max(840).default(0),
   days: z.coerce.number().int().min(7).max(90).default(30),
 });

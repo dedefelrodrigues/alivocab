@@ -7,6 +7,12 @@ export const languageCodeSchema = z
 
 export type LanguageCode = z.infer<typeof languageCodeSchema>;
 
+/**
+ * The learning language a request is about (PLAN.md D31). Defaults to the active language;
+ * requests about a theme use the theme's language instead.
+ */
+export const learningLangParam = languageCodeSchema.optional();
+
 export const DEFAULT_TARGET_LANG: LanguageCode = 'pl';
 export const DEFAULT_NATIVE_LANG: LanguageCode = 'en';
 

@@ -11,8 +11,8 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { nativeLangs } from '../lib/languages.ts';
 import { MAX_UPLOAD_BYTES } from '../lib/pictures/store.ts';
-import { getOrCreateProfile } from '../lib/profile.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { reseedCards } from '../lib/srs.ts';
 import { validate } from '../lib/validate.ts';
@@ -122,7 +122,13 @@ export const wordRoutes = ({ db, auth, pictures }: AppDeps) => {
           tx.update(lexemes).set(lexemeFields).where(eq(lexemes.id, own.lexemeId)).run();
         }
         if (translations) {
-          const lang = getOrCreateProfile(db, user.id).nativeLang;
+          // Stored in the translation language of the word's own learning language.
+          const word = tx
+            .select({ lang: lexemes.lang })
+            .from(lexemes)
+            .where(eq(lexemes.id, own.lexemeId))
+            .get();
+          const lang = nativeLangs(tx, user.id)(word?.lang ?? '');
           tx.delete(lexemeTranslations)
             .where(
               and(eq(lexemeTranslations.lexemeId, own.lexemeId), eq(lexemeTranslations.lang, lang)),

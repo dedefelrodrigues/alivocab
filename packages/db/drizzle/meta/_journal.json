@@ -36,6 +36,20 @@
       "when": 1791573720771,
       "tag": "0004_tts_gemini_for_existing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791922883850,
+      "tag": "0005_user_languages",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791922884810,
+      "tag": "0006_user_languages_backfill",
+      "breakpoints": true
     }
   ]
 }

@@ -16,9 +16,10 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { type FormEvent, useId, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { FormField } from '@/components/form-field';
+import { ModelInput } from '@/components/model-input';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -182,7 +183,6 @@ function CredentialDialog({
 }) {
   const queryClient = useQueryClient();
   const editing = state.mode === 'edit' ? state.credential : null;
-  const modelsListId = useId();
 
   const [provider, setProvider] = useState<AiProvider>(editing?.provider ?? 'google');
   const [label, setLabel] = useState(editing?.label ?? AI_PROVIDER_INFO.google.label);
@@ -356,22 +356,17 @@ function CredentialDialog({
             label="Default model (optional)"
             hint={
               testResult?.models.length
-                ? 'Suggestions loaded from your account.'
+                ? 'Tap the arrow to pick a model from your account, or type an id.'
                 : 'Run “Test connection” to load suggestions.'
             }
           >
-            <Input
+            <ModelInput
               id="defaultModel"
-              list={modelsListId}
               value={defaultModel}
-              onChange={(e) => setDefaultModel(e.target.value)}
+              onChange={setDefaultModel}
+              models={testResult?.models ?? []}
               placeholder="e.g. gemini-2.5-flash"
             />
-            <datalist id={modelsListId}>
-              {testResult?.models.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
           </FormField>
 
           {testResult && (

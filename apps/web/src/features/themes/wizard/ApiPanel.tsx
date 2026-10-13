@@ -2,11 +2,11 @@ import { AI_PROVIDER_INFO } from '@alivocab/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Bot, Loader2 } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FormField } from '@/components/form-field';
+import { ModelInput } from '@/components/model-input';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -39,7 +39,6 @@ export function ApiPanel({
   const [credentialId, setCredentialId] = useState<string | undefined>(preferredCredentialId);
   const [model, setModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
-  const modelsId = useId();
 
   const credential = credentials?.find((c) => c.id === credentialId) ?? credentials?.[0];
   const defaultModel = credential
@@ -136,18 +135,13 @@ export function ApiPanel({
             </button>
           }
         >
-          <Input
+          <ModelInput
             id="model"
-            list={modelsId}
             value={model}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={setModel}
+            models={models}
             placeholder="model id"
           />
-          <datalist id={modelsId}>
-            {models.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
         </FormField>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">

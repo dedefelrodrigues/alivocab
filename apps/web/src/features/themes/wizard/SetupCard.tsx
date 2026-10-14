@@ -1,4 +1,4 @@
-import { CEFR_LEVELS, type CefrLevel } from '@alivocab/shared';
+import { CEFR_LEVELS, type CefrLevel, languageName } from '@alivocab/shared';
 import { FormField } from '@/components/form-field';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useLanguages } from '@/hooks/useLanguages';
 import type { ThemeSetup } from './types';
 
 const ANY_LEVEL = 'any';
@@ -34,6 +35,7 @@ export function SetupCard({
 }) {
   const set = <K extends keyof ThemeSetup>(k: K, v: ThemeSetup[K]) =>
     onChange({ ...value, [k]: v });
+  const languages = useLanguages().filter((l) => !l.archived || l.lang === value.lang);
 
   return (
     <Card>
@@ -41,6 +43,22 @@ export function SetupCard({
         <CardTitle>1. Theme</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
+        {languages.length > 1 && (
+          <FormField id="themeLang" label="Language">
+            <Select value={value.lang} onValueChange={(v) => set('lang', v)} disabled={locked}>
+              <SelectTrigger id="themeLang" className="w-full sm:w-60">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languages.map((l) => (
+                  <SelectItem key={l.lang} value={l.lang}>
+                    {languageName(l.lang)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        )}
         <FormField id="themeName" label="Theme" error={errors.themeName}>
           <Input
             id="themeName"

@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ReviewsChart } from '@/features/stats/ReviewsChart';
 import { WordsTable } from '@/features/stats/WordsTable';
 import { StatusBar } from '@/features/themes/status';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { errorMessage } from '@/lib/api';
 import { statsQuery, themesQuery } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -45,8 +46,9 @@ function duration(ms: number) {
 function StatsPage() {
   const { themeId, days = 30 } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const { data: themes } = useQuery(themesQuery);
-  const { data, isPending, isFetching, error } = useQuery(statsQuery(themeId, days));
+  const lang = useActiveLang();
+  const { data: themes } = useQuery(themesQuery(lang));
+  const { data, isPending, isFetching, error } = useQuery(statsQuery(themeId, lang, days));
 
   return (
     <div className="space-y-6">

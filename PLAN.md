@@ -570,10 +570,10 @@ translation edits). Delivered on `feat/multi-language` in four steps, released t
    - [x] Theme creation and proposals take the requested language instead of the profile's
    - [x] Tests with two languages: queue isolation, budgets, stats, theme creation, translation edits
 3. **Web**
-   - [ ] Language switcher in the header ("Add a language"), saved as the active language
-   - [ ] Settings → Learning: list of languages with translation language, limits and voice each
-   - [ ] Query keys include `lang`; the theme wizard uses the active language; theme list filtered
-   - [ ] "Auto" palette and greeting follow the active language
+   - [x] Language switcher in the header ("Add a language"), saved as the active language
+   - [x] Settings → Learning: list of languages with translation language, limits and voice each
+   - [x] Query keys include `lang`; the theme wizard uses the active language; theme list filtered
+   - [x] "Auto" palette and greeting follow the active language
 4. **Release**: PLAN/CLAUDE.md updated, `CHANGELOG.md`, version 1.1.0, tag, deploy (§12)
 
 **Done when** a learner can add Spanish next to Polish, switch between them, and each language has

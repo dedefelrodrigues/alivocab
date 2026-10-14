@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { meQuery, themeQuery, themesQuery } from '@/lib/queries';
+import { meQuery, themeQuery } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { SpeakButton } from '../SpeakButton';
 import { STATUS_META, StatusToggle, TAGS } from '../status';
@@ -40,7 +40,7 @@ export function ReviewStep({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: me } = useQuery(meQuery);
-  const lang = me?.profile.targetLang ?? 'pl';
+  const { lang } = setup;
   const [items, setItems] = useState<Item[]>(() =>
     proposal.words.map((w) => ({
       ...w,
@@ -80,6 +80,7 @@ export function ReviewStep({
           json: {
             name: setup.themeName,
             description: setup.description || undefined,
+            lang,
             generationId: proposal.generationId,
             words,
           },
@@ -89,7 +90,7 @@ export function ReviewStep({
     },
     onSuccess: async (themeId) => {
       toast.success(`Saved ${included.length} words`);
-      await queryClient.invalidateQueries(themesQuery);
+      await queryClient.invalidateQueries({ queryKey: ['themes'] });
       await queryClient.invalidateQueries(themeQuery(themeId));
       await navigate({ to: '/themes/$themeId', params: { themeId } });
     },

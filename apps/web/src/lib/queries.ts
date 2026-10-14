@@ -35,10 +35,12 @@ export const usersQuery = queryOptions({
   },
 });
 
-export const themesQuery = queryOptions({
-  queryKey: ['themes'],
-  queryFn: () => unwrap(api.themes.$get({ query: {} })),
-});
+/** One learning language's themes (PLAN.md D31). Invalidate all of them with `['themes']`. */
+export const themesQuery = (lang: string) =>
+  queryOptions({
+    queryKey: ['themes', { lang }],
+    queryFn: () => unwrap(api.themes.$get({ query: { lang } })),
+  });
 
 export const themeQuery = (id: string) =>
   queryOptions({
@@ -48,47 +50,50 @@ export const themeQuery = (id: string) =>
 
 const tzOffset = () => String(new Date().getTimezoneOffset());
 
-export const reviewSummaryQuery = queryOptions({
-  queryKey: ['review', 'summary'],
-  queryFn: () => unwrap(api.review.summary.$get({ query: { tzOffset: tzOffset() } })),
-  refetchInterval: 5 * 60_000,
-});
+/** A theme, or else every theme of one learning language (a theme brings its own language). */
+const scope = (themeId: string | undefined, lang: string) => (themeId ? { themeId } : { lang });
+
+export const reviewSummaryQuery = (lang: string) =>
+  queryOptions({
+    queryKey: ['review', 'summary', lang],
+    queryFn: () => unwrap(api.review.summary.$get({ query: { tzOffset: tzOffset(), lang } })),
+    refetchInterval: 5 * 60_000,
+  });
 
 /** A session's queue is fetched once; grading updates the server, not this snapshot. */
-export const reviewQueueQuery = (themeId: string | undefined, session: number) =>
+export const reviewQueueQuery = (themeId: string | undefined, lang: string, session: number) =>
   queryOptions({
-    queryKey: ['review', 'queue', themeId ?? 'all', session],
+    queryKey: ['review', 'queue', scope(themeId, lang), session],
     queryFn: () =>
-      unwrap(
-        api.review.queue.$get({ query: { tzOffset: tzOffset(), ...(themeId ? { themeId } : {}) } }),
-      ),
+      unwrap(api.review.queue.$get({ query: { tzOffset: tzOffset(), ...scope(themeId, lang) } })),
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
 
 /** A lesson is fetched once per session, like the review queue. */
-export const lessonQuery = (themeId: string | undefined, mode: LessonMode, session: number) =>
+export const lessonQuery = (
+  themeId: string | undefined,
+  lang: string,
+  mode: LessonMode,
+  session: number,
+) =>
   queryOptions({
-    queryKey: ['lesson', themeId ?? 'all', mode, session],
+    queryKey: ['lesson', scope(themeId, lang), mode, session],
     queryFn: () =>
-      unwrap(
-        api.lessons.$get({
-          query: { tzOffset: tzOffset(), mode, ...(themeId ? { themeId } : {}) },
-        }),
-      ),
+      unwrap(api.lessons.$get({ query: { tzOffset: tzOffset(), mode, ...scope(themeId, lang) } })),
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
 
-export const statsQuery = (themeId: string | undefined, days: number) =>
+export const statsQuery = (themeId: string | undefined, lang: string, days: number) =>
   queryOptions({
-    queryKey: ['stats', themeId ?? 'all', days],
+    queryKey: ['stats', scope(themeId, lang), days],
     queryFn: () =>
       unwrap(
         api.stats.$get({
-          query: { tzOffset: tzOffset(), days: String(days), ...(themeId ? { themeId } : {}) },
+          query: { tzOffset: tzOffset(), days: String(days), ...scope(themeId, lang) },
         }),
       ),
     placeholderData: (previous) => previous,

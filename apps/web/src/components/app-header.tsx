@@ -24,6 +24,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { LanguageSwitcher } from '@/features/languages/LanguageSwitcher';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { useUpdateProfile } from '@/hooks/useProfile';
 import { authClient } from '@/lib/auth-client';
 import { meQuery, reviewSummaryQuery } from '@/lib/queries';
@@ -36,7 +38,8 @@ const navLinkClass =
 
 export function AppHeader() {
   const { data: me } = useQuery(meQuery);
-  const { data: summary } = useQuery(reviewSummaryQuery);
+  const lang = useActiveLang();
+  const { data: summary } = useQuery(reviewSummaryQuery(lang));
   const pending = (summary?.dueNow ?? 0) + (summary?.newAvailable ?? 0);
   const { mode } = useAppearance();
   const updateProfile = useUpdateProfile();
@@ -90,6 +93,7 @@ export function AppHeader() {
             </Link>
           )}
         </nav>
+        <LanguageSwitcher />
         <Button
           variant="ghost"
           size="icon"

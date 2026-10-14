@@ -33,9 +33,10 @@ import { TranslationResult } from '@/features/lesson/TranslationResult';
 import { expectedAnswer, TypeExercise } from '@/features/lesson/TypeExercise';
 import { Flashcard } from '@/features/review/Flashcard';
 import { RATING_KEYS, RatingBar } from '@/features/review/RatingBar';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { speak } from '@/hooks/useVoices';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { lessonQuery, meQuery, themeQuery } from '@/lib/queries';
+import { lessonQuery, themeQuery } from '@/lib/queries';
 
 export const Route = createFileRoute('/_app/lesson')({
   validateSearch: z.object({
@@ -61,7 +62,8 @@ function LessonPage() {
   const { themeId, mode = 'due' } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const [session, setSession] = useState(0);
-  const { data, isPending, error } = useQuery(lessonQuery(themeId, mode, session));
+  const lang = useActiveLang();
+  const { data, isPending, error } = useQuery(lessonQuery(themeId, lang, mode, session));
   const { data: theme } = useQuery({ ...themeQuery(themeId ?? ''), enabled: !!themeId });
 
   const start = (next: LessonMode) => {
@@ -188,7 +190,6 @@ function Session({
   onPractice: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { data: me } = useQuery(meQuery);
   const graded = mode === 'due';
   const [queue, setQueue] = useState(initial);
   const [index, setIndex] = useState(0);
@@ -293,12 +294,9 @@ function Session({
     shownAt.current = Date.now();
   }, []);
 
-  const sayIt = useCallback(
-    (lemma: string, lang: string) => {
-      if (autoplay.current) speak(lemma, lang, me?.profile.ttsVoice);
-    },
-    [me?.profile.ttsVoice],
-  );
+  const sayIt = useCallback((lemma: string, lang: string) => {
+    if (autoplay.current) speak(lemma, lang);
+  }, []);
 
   const choose = (lexemeId: string) => {
     if (!item || answer) return;
@@ -388,9 +386,9 @@ function Session({
 
   useEffect(() => {
     if (item?.kind === 'intro' && autoplay.current && !revealed) {
-      speak(item.card.lemma, item.card.lang, me?.profile.ttsVoice);
+      speak(item.card.lemma, item.card.lang);
     }
-  }, [item, revealed, me?.profile.ttsVoice]);
+  }, [item, revealed]);
 
   useEffect(() => {
     if (done) {

@@ -17,7 +17,7 @@ function useSpeakerVoices(lang: string, speakerCount: number) {
   const { data: me } = useQuery(meQuery);
   const { voices } = useVoices(lang);
   const provider = me?.profile.ttsProvider ?? 'browser';
-  const main = me?.profile.ttsVoice ?? null;
+  const main = me?.languages.find((l) => l.lang === lang)?.ttsVoice ?? null;
   return (speakerIndex: number): string | undefined => {
     if (speakerIndex <= 0 || speakerCount < 2) return undefined;
     if (provider !== 'browser') {

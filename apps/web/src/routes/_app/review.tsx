@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Flashcard } from '@/features/review/Flashcard';
 import { RATING_KEYS, RatingBar } from '@/features/review/RatingBar';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { speak } from '@/hooks/useVoices';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { meQuery, reviewQueueQuery, themeQuery } from '@/lib/queries';
+import { reviewQueueQuery, themeQuery } from '@/lib/queries';
 
 export const Route = createFileRoute('/_app/review')({
   validateSearch: z.object({ themeId: z.string().optional() }),
@@ -34,7 +35,8 @@ const REQUEUE_GAP = 3;
 function ReviewPage() {
   const { themeId } = Route.useSearch();
   const [session, setSession] = useState(0);
-  const { data, isPending, error } = useQuery(reviewQueueQuery(themeId, session));
+  const lang = useActiveLang();
+  const { data, isPending, error } = useQuery(reviewQueueQuery(themeId, lang, session));
   const { data: theme } = useQuery({ ...themeQuery(themeId ?? ''), enabled: !!themeId });
 
   return (
@@ -83,7 +85,6 @@ function Session({
   onRestart: () => void;
 }) {
   const queryClient = useQueryClient();
-  const { data: me } = useQuery(meQuery);
   const [queue, setQueue] = useState(initial);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -135,8 +136,8 @@ function Session({
   useEffect(() => {
     if (!card || !autoplay) return;
     const targetVisible = card.direction === 'recognition' ? !revealed : revealed;
-    if (targetVisible) speak(card.lemma, card.lang, me?.profile.ttsVoice);
-  }, [card, revealed, autoplay, me?.profile.ttsVoice]);
+    if (targetVisible) speak(card.lemma, card.lang);
+  }, [card, revealed, autoplay]);
 
   useEffect(() => {
     if (done) {
@@ -174,12 +175,12 @@ function Session({
         e.preventDefault();
         rate('good');
       } else if (e.key === 'p') {
-        speak(card.lemma, card.lang, me?.profile.ttsVoice);
+        speak(card.lemma, card.lang);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [card, revealed, rate, me?.profile.ttsVoice]);
+  }, [card, revealed, rate]);
 
   // Swipe after revealing: right = good, left = again.
   const onTouchStart = (e: TouchEvent) => {

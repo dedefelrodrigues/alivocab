@@ -33,8 +33,12 @@ function AppLayout() {
   }, [profile, hydrate]);
 
   useEffect(() => {
-    if (profile) configureSpeech({ provider: profile.ttsProvider, voice: profile.ttsVoice });
-  }, [profile]);
+    if (!me) return;
+    configureSpeech({
+      provider: me.profile.ttsProvider,
+      voices: Object.fromEntries(me.languages.map((l) => [l.lang, l.ttsVoice])),
+    });
+  }, [me]);
 
   return (
     <div className="flex min-h-dvh flex-col">

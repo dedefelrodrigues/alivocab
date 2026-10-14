@@ -8,9 +8,10 @@ import { toast } from 'sonner';
 import { reportProblem } from './activity.ts';
 import { api, errorMessage, unwrap } from './api.ts';
 
-type SpeechConfig = { provider: TtsProvider; voice: string | null };
+/** The provider is shared; each learning language has its own voice (PLAN.md D31). */
+type SpeechConfig = { provider: TtsProvider; voices: Record<string, string | null> };
 
-let config: SpeechConfig = { provider: 'browser', voice: null };
+let config: SpeechConfig = { provider: 'browser', voices: {} };
 /** Cloud audio URLs by text/language/voice, so repeats don't ask the server again. */
 const urls = new Map<string, Promise<string>>();
 let audio: HTMLAudioElement | null = null;
@@ -58,8 +59,8 @@ function cloudUrl(text: string, lang: string, voice: string | null): Promise<str
 }
 
 /**
- * Speaks `text`; resolves when it has finished. `voice` overrides the learner's voice (e.g. the
- * second speaker in a dialogue); `rate` is the playback speed (1 = normal).
+ * Speaks `text` with the learner's voice for `lang`; resolves when it has finished. `voice`
+ * overrides it (e.g. the second speaker in a dialogue); `rate` is the playback speed (1 = normal).
  */
 export async function speak(
   text: string,
@@ -67,11 +68,12 @@ export async function speak(
   { voice, rate = 1 }: { voice?: string | null; rate?: number } = {},
 ): Promise<void> {
   stopSpeaking();
+  const chosen = voice ?? config.voices[lang] ?? null;
   if (config.provider === 'browser') {
-    return browserSpeak(text, lang, voice ?? config.voice, rate);
+    return browserSpeak(text, lang, chosen, rate);
   }
   try {
-    const url = await cloudUrl(text, lang, voice ?? null);
+    const url = await cloudUrl(text, lang, chosen);
     const player = new Audio(url);
     audio = player;
     player.playbackRate = rate;

@@ -260,6 +260,15 @@ describe('learning languages API', () => {
     expect((await send('POST', '/api/themes', { name: 'Maison', lang: 'fr' })).status).toBe(404);
   });
 
+  it('starts every language on the default voice when the provider changes', async () => {
+    const { get, send } = await twoLanguages();
+    await send('PATCH', '/api/languages/es', { ttsVoice: 'Puck' });
+    await send('PATCH', '/api/me/profile', { ttsVoice: 'Kore' });
+    await send('PATCH', '/api/me/profile', { ttsProvider: 'edge' });
+    const languages = await get<LearningLanguageDto[]>('/api/languages');
+    expect(languages.map((l) => l.ttsVoice)).toEqual([null, null]);
+  });
+
   it('applies a new translation language to the language’s themes', async () => {
     const { es, get, send } = await twoLanguages();
     await send('PATCH', '/api/languages/es', { nativeLang: 'en' });

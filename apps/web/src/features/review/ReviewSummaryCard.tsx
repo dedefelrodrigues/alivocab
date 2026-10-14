@@ -4,13 +4,15 @@ import { Dumbbell, Flame, GraduationCap, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { reviewSummaryQuery } from '@/lib/queries';
 
 const weekday = (date: string) =>
   new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'narrow' });
 
 export function ReviewSummaryCard() {
-  const { data, isPending } = useQuery(reviewSummaryQuery);
+  const lang = useActiveLang();
+  const { data, isPending } = useQuery(reviewSummaryQuery(lang));
   if (isPending) return <Skeleton className="h-40 w-full" />;
   if (!data) return null;
 

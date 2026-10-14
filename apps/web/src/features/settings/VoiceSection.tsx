@@ -8,6 +8,7 @@ import {
 } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Volume2 } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { FormField } from '@/components/form-field';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,8 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useActiveLang, useLanguage, useLanguages, useUpdateLanguage } from '@/hooks/useLanguages';
 import { useUpdateProfile } from '@/hooks/useProfile';
 import { speak, useVoices, VOICE_SAMPLES } from '@/hooks/useVoices';
+import { errorMessage } from '@/lib/api';
 import { credentialsQuery, meQuery } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { SettingsCard } from './SettingsCard';
@@ -50,25 +53,40 @@ function fallbackText(provider: TtsProvider): string | null {
 
 export function VoiceSection() {
   const { data: me } = useQuery(meQuery);
-  const lang = me?.profile.targetLang ?? 'pl';
+  const activeLang = useActiveLang();
+  const languages = useLanguages().filter((l) => !l.archived);
+  // The provider is shared; the voice is chosen per learning language (PLAN.md D31).
+  const [chosenLang, setChosenLang] = useState<string | null>(null);
+  const lang = chosenLang ?? activeLang;
+  const language = useLanguage(lang);
   const { supported, voices } = useVoices(lang);
   const { data: credentials } = useQuery(credentialsQuery);
   const update = useUpdateProfile();
+  const updateLanguage = useUpdateLanguage();
   if (!me) return null;
+  const voiceOf = language?.ttsVoice ?? null;
+  const saveVoice = (ttsVoice: string | null) =>
+    updateLanguage.mutate(
+      { lang, patch: { ttsVoice } },
+      {
+        onSuccess: () => toast.success('Voice saved'),
+        onError: (err) => toast.error(errorMessage(err)),
+      },
+    );
   const provider = me.profile.ttsProvider;
   const hasKey =
     provider === 'browser' ||
     !CLOUD_TTS[provider].needsKey ||
     !!credentials?.some((c) => c.provider === provider);
 
-  const current = me.profile.ttsVoice ?? DEFAULT_VOICE;
+  const current = voiceOf ?? DEFAULT_VOICE;
   const sample = VOICE_SAMPLES[lang] ?? VOICE_SAMPLES.en ?? '';
 
   return (
     <SettingsCard
       id="voice"
       title="Voice"
-      description={`Pronunciation for ${languageName(lang)}: flashcards, lessons and listening.`}
+      description="Pronunciation in flashcards, lessons and listening. Each language has its own voice."
     >
       <fieldset className="m-0 grid gap-2 border-0 p-0 sm:grid-cols-2">
         <legend className="mb-2 text-sm font-medium">Voices from</legend>
@@ -87,8 +105,8 @@ export function VoiceSection() {
                 checked={p === provider}
                 onChange={() =>
                   update.mutate(
-                    // Voice names belong to a provider, so switching starts from its default.
-                    { ttsProvider: p, ttsVoice: null },
+                    // Voice names belong to a provider: every language starts from its default.
+                    { ttsProvider: p },
                     { onSuccess: () => toast.success('Voice settings saved') },
                   )
                 }
@@ -102,6 +120,23 @@ export function VoiceSection() {
       </fieldset>
       {fallbackText(provider) && (
         <p className="-mt-2 text-xs text-muted-foreground">{fallbackText(provider)}</p>
+      )}
+
+      {languages.length > 1 && (
+        <FormField id="voiceLang" label="Voice for">
+          <Select value={lang} onValueChange={setChosenLang}>
+            <SelectTrigger id="voiceLang" className="w-full sm:w-60">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map((l) => (
+                <SelectItem key={l.lang} value={l.lang}>
+                  {languageName(l.lang)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
       )}
 
       {provider !== 'browser' && cloudVoices(provider, lang).length === 0 ? (
@@ -136,13 +171,8 @@ export function VoiceSection() {
                 }
               >
                 <Select
-                  value={cloudVoice(provider, me.profile.ttsVoice, lang) ?? undefined}
-                  onValueChange={(v) =>
-                    update.mutate(
-                      { ttsVoice: v },
-                      { onSuccess: () => toast.success('Voice saved') },
-                    )
-                  }
+                  value={cloudVoice(provider, voiceOf, lang) ?? undefined}
+                  onValueChange={saveVoice}
                 >
                   <SelectTrigger id="cloudVoice" className="w-full">
                     <SelectValue />
@@ -157,11 +187,7 @@ export function VoiceSection() {
                 </Select>
               </FormField>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => speak(sample, lang, me.profile.ttsVoice)}
-            >
+            <Button type="button" variant="outline" onClick={() => speak(sample, lang, voiceOf)}>
               <Volume2 /> Test voice
             </Button>
           </div>
@@ -190,12 +216,7 @@ export function VoiceSection() {
             >
               <Select
                 value={voices.some((v) => v.voiceURI === current) ? current : DEFAULT_VOICE}
-                onValueChange={(v) =>
-                  update.mutate(
-                    { ttsVoice: v === DEFAULT_VOICE ? null : v },
-                    { onSuccess: () => toast.success('Voice saved') },
-                  )
-                }
+                onValueChange={(v) => saveVoice(v === DEFAULT_VOICE ? null : v)}
                 disabled={!supported}
               >
                 <SelectTrigger id="ttsVoice" className="w-full">
@@ -223,7 +244,7 @@ export function VoiceSection() {
             type="button"
             variant="outline"
             disabled={!supported}
-            onClick={() => speak(sample, lang, me.profile.ttsVoice)}
+            onClick={() => speak(sample, lang, voiceOf)}
           >
             <Volume2 /> Test voice
           </Button>

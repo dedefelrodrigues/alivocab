@@ -48,6 +48,13 @@ export const meRoutes = ({ db, auth }: AppDeps) =>
           .set(patch)
           .where(eq(schema.userProfiles.userId, userId))
           .run();
+        // Voice names belong to a provider: a new provider starts every language on its default.
+        if (patch.ttsProvider) {
+          tx.update(schema.userLanguages)
+            .set({ ttsVoice: null })
+            .where(eq(schema.userLanguages.userId, userId))
+            .run();
+        }
         syncActiveLanguage(tx, userId, patch);
       });
       return c.json(getOrCreateProfile(db, userId));

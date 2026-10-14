@@ -26,7 +26,7 @@ export function useVoices(lang: string): { supported: boolean; voices: SpeechSyn
   return { supported, voices };
 }
 
-/** Speaks with the learner's chosen provider (see `@/lib/speech`). */
+/** Speaks with the learner's provider and their voice for `lang` (see `@/lib/speech`). */
 export function speak(text: string, lang: string, voice?: string | null) {
   void speakWith(text, lang, { voice });
 }

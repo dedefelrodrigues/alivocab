@@ -54,7 +54,7 @@ import { SpeakButton } from '@/features/themes/SpeakButton';
 import { STATUS_META, StatusBar, StatusToggle } from '@/features/themes/status';
 import { WordMeta } from '@/features/themes/WordMeta';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { themeQuery, themesQuery } from '@/lib/queries';
+import { themeQuery } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_app/themes/$themeId')({
@@ -130,7 +130,7 @@ function ThemePage() {
       if (ctx?.previous) queryClient.setQueryData(themeQuery(themeId).queryKey, ctx.previous);
       toast.error(errorMessage(err));
     },
-    onSettled: () => void queryClient.invalidateQueries(themesQuery),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['themes'] }),
   });
 
   const unlink = useMutation({
@@ -147,7 +147,7 @@ function ThemePage() {
     mutationFn: () => unwrap(api.themes[':id'].$delete({ param: { id: themeId } })),
     onSuccess: async () => {
       queryClient.removeQueries(themeQuery(themeId));
-      await queryClient.invalidateQueries(themesQuery);
+      await queryClient.invalidateQueries({ queryKey: ['themes'] });
       toast.success('Theme deleted');
       await navigate({ to: '/themes' });
     },

@@ -1,4 +1,4 @@
-import { LANGUAGES, type ProfileDto } from '@alivocab/shared';
+import type { ProfileDto } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { type FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -18,24 +18,12 @@ import { useUpdateProfile } from '@/hooks/useProfile';
 import { credentialsQuery, meQuery } from '@/lib/queries';
 import { SettingsCard } from './SettingsCard';
 
-type LearningFields = Pick<
-  ProfileDto,
-  | 'targetLang'
-  | 'nativeLang'
-  | 'defaultWordCount'
-  | 'dailyNewLimit'
-  | 'dailyReviewLimit'
-  | 'defaultAiSource'
-  | 'autoPictures'
->;
+/** Settings shared by every learning language; per-language ones are under Languages. */
+type LearningFields = Pick<ProfileDto, 'defaultWordCount' | 'defaultAiSource' | 'autoPictures'>;
 
 function pick(p: ProfileDto): LearningFields {
   return {
-    targetLang: p.targetLang,
-    nativeLang: p.nativeLang,
     defaultWordCount: p.defaultWordCount,
-    dailyNewLimit: p.dailyNewLimit,
-    dailyReviewLimit: p.dailyReviewLimit,
     defaultAiSource: p.defaultAiSource,
     autoPictures: p.autoPictures,
   };
@@ -56,16 +44,14 @@ export function LearningSection() {
   const set = <K extends keyof LearningFields>(key: K, value: LearningFields[K]) =>
     setForm((f) => (f ? { ...f, [key]: value } : f));
 
-  const sameLanguage = form.targetLang === form.nativeLang;
   const dirty = JSON.stringify(form) !== JSON.stringify(pick(me.profile));
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (sameLanguage) return;
     update.mutate(form, { onSuccess: () => toast.success('Learning settings saved') });
   };
 
-  const numberField = (key: 'defaultWordCount' | 'dailyNewLimit' | 'dailyReviewLimit') => ({
+  const numberField = (key: 'defaultWordCount') => ({
     type: 'number' as const,
     inputMode: 'numeric' as const,
     value: String(form[key]),
@@ -76,41 +62,18 @@ export function LearningSection() {
     <SettingsCard
       id="learning"
       title="Learning"
-      description="What you are learning and how much at a time."
+      description="How new themes are made, for every language."
     >
       <form onSubmit={onSubmit} className="grid gap-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <FormField id="targetLang" label="I am learning">
-            <LanguageSelect
-              id="targetLang"
-              value={form.targetLang}
-              onChange={(v) => set('targetLang', v)}
-            />
-          </FormField>
-          <FormField
-            id="nativeLang"
-            label="Translate into"
-            error={sameLanguage ? 'Pick a different language than the one you are learning' : null}
-          >
-            <LanguageSelect
-              id="nativeLang"
-              value={form.nativeLang}
-              onChange={(v) => set('nativeLang', v)}
-            />
-          </FormField>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <FormField id="defaultWordCount" label="Words per theme" hint="5 – 100 (default 30)">
-            <Input id="defaultWordCount" min={5} max={100} {...numberField('defaultWordCount')} />
-          </FormField>
-          <FormField id="dailyNewLimit" label="New words per day" hint="0 – 200">
-            <Input id="dailyNewLimit" min={0} max={200} {...numberField('dailyNewLimit')} />
-          </FormField>
-          <FormField id="dailyReviewLimit" label="Reviews per day" hint="0 – 2000">
-            <Input id="dailyReviewLimit" min={0} max={2000} {...numberField('dailyReviewLimit')} />
-          </FormField>
-        </div>
+        <FormField id="defaultWordCount" label="Words per theme" hint="5 – 100 (default 30)">
+          <Input
+            id="defaultWordCount"
+            min={5}
+            max={100}
+            className="w-full sm:w-40"
+            {...numberField('defaultWordCount')}
+          />
+        </FormField>
 
         <FormField
           id="defaultAiSource"
@@ -166,39 +129,11 @@ export function LearningSection() {
           >
             Reset
           </Button>
-          <Button type="submit" disabled={!dirty || sameLanguage || update.isPending}>
+          <Button type="submit" disabled={!dirty || update.isPending}>
             {update.isPending ? 'Saving…' : 'Save'}
           </Button>
         </div>
       </form>
     </SettingsCard>
-  );
-}
-
-function LanguageSelect({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger id={id} className="w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {LANGUAGES.map((l) => (
-          <SelectItem key={l.code} value={l.code}>
-            {l.name}
-            {l.nativeName !== l.name && (
-              <span className="text-muted-foreground"> · {l.nativeName}</span>
-            )}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }

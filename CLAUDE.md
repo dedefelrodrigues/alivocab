@@ -82,6 +82,10 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   part of speech, gender, aspect / aspect pair, grammatical forms (JSON), pronunciation, translations
   (per native language) and example sentences. It is shared across users so the same word is
   never stored twice.
+- **Learning language**: a user learns one or more languages (`user_languages`), one of them
+  **active** (`user_profiles.target_lang`). The translation language (`native_lang`), daily limits
+  and voice are per learning language; the streak is global. A theme belongs to one language.
+  Removing a language archives it (data is kept). See PLAN.md D31.
 - **Theme**: owned by a user. Many-to-many with lexemes (`theme_lexemes`). A word proposed again
   under a new theme is **linked**, not duplicated, and keeps its existing tag and SRS state.
 - **UserLexeme**: per-user state of a lexeme: `status` (`unknown | recognize | known`,
@@ -109,6 +113,12 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   (not 403) for other users' ids.
 - Sign-up requires the `x-invite-code` header (`INVITE_HEADER`). Roles, banning and admin password
   resets use Better Auth's admin plugin (`authClient.admin.*` on the web).
+- Anything outside a theme (queue, summary, lessons, stats, theme list) covers one learning
+  language: resolve it with `requestLanguage()` (`lib/languages.ts`: the theme's, else `lang`,
+  else the active one; 404 for a language the user doesn't learn) and filter cards with `inLang()`.
+  Translations are read in the word's own language's `nativeLang` (`nativeLangs()`). Language
+  settings change through `updateLanguage()`, which keeps the old profile columns in sync until
+  v1.2. In the web app, `useActiveLang()` scopes queries and their keys include the language.
 - Vocabulary writes go through `saveWords()` (`apps/api/src/lib/vocab.ts`): it dedupes on
   `(lang, normalized_lemma, pos)`, only *fills* missing shared fields, links the word to the theme and
   records the user's tag. Never insert into `lexemes` directly from a route.
@@ -192,6 +202,14 @@ lives at `data/alivocab.db` (gitignored). Copy `.env.example` → `.env` and fil
   `docker/Dockerfile`.
 - Check a production build without Docker: `pnpm build`, then run `node apps/api/dist/index.js`
   with `NODE_ENV=production STATIC_DIR=apps/web/dist` (CI also builds and starts the image).
+
+## Releases
+
+- One SemVer version for the app in the root `package.json`, annotated `vX.Y.Z` tags and
+  `CHANGELOG.md` (PLAN.md §12, D32). Minor for features (including automatic, additive
+  migrations), major only when an operator must act by hand or a rollback is impossible.
+- Data moves ship expand → contract: keep writing the old shape for one release so the previous
+  image still runs on the migrated database.
 
 ## Git workflow
 

@@ -1,6 +1,8 @@
 import type { CefrLevel, ProposalDto } from '@alivocab/shared';
 
 export type ThemeSetup = {
+  /** The language the words are in (an existing theme's, else chosen, default the active one). */
+  lang: string;
   themeName: string;
   description: string;
   count: number;

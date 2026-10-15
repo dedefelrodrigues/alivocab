@@ -27,8 +27,8 @@ import {
 } from '@alivocab/shared';
 import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { type LanguageRow, nativeLangs, requestLanguage } from './languages.ts';
 import { resolvePictures } from './pictures/resolve.ts';
-import { getOrCreateProfile } from './profile.ts';
 
 const {
   cards,
@@ -143,7 +143,8 @@ export function backfillCards(db: Db, userId: string, now: Date): number {
 
 type DayStats = { reviewedToday: number; newToday: number; dayStart: Date };
 
-function dayStats(db: Db, userId: string, now: Date, tzOffset: number): DayStats {
+/** Today's reviews in one language (each learning language has its own daily limits). */
+function dayStats(db: Db, userId: string, lang: string, now: Date, tzOffset: number): DayStats {
   const dayStart = startOfLocalDay(now, tzOffset);
   const row = db
     .select({
@@ -151,9 +152,25 @@ function dayStats(db: Db, userId: string, now: Date, tzOffset: number): DayStats
       introduced: sql<number>`count(distinct case when ${reviewLogs.stateBefore} = ${CARD_STATE.new} then ${reviewLogs.cardId} end)`,
     })
     .from(reviewLogs)
-    .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, dayStart)))
+    .innerJoin(cards, eq(cards.id, reviewLogs.cardId))
+    .where(and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, dayStart), inLang(lang)))
     .get();
   return { reviewedToday: row?.reviewed ?? 0, newToday: row?.introduced ?? 0, dayStart };
+}
+
+/** Which cards a queue covers: one learning language, optionally one theme. */
+type Scope = { lang: string; themeId?: string };
+
+/** Restricts a card query to the words of one language. */
+export function inLang(lang: string) {
+  return inArray(
+    cards.lexemeId,
+    sql`(select ${lexemes.id} from ${lexemes} where ${lexemes.lang} = ${lang})`,
+  );
+}
+
+function inScope({ lang, themeId }: Scope) {
+  return and(inLang(lang), inTheme(themeId));
 }
 
 /** Restricts a card query to one theme, when given. */
@@ -167,7 +184,7 @@ function inTheme(themeId: string | undefined) {
 }
 
 /** New cards in introduction order: recognition first; recall once recognition was seen. */
-function newCardIds(db: Db, userId: string, themeId: string | undefined, limit: number): string[] {
+function newCardIds(db: Db, userId: string, scope: Scope, limit: number): string[] {
   if (limit <= 0) return [];
   const recognitionSeen = sql`exists (select 1 from ${cards} r where r.user_id = ${cards.userId} and r.lexeme_id = ${cards.lexemeId} and r.direction = 'recognition' and r.state != ${CARD_STATE.new})`;
   return (
@@ -183,7 +200,7 @@ function newCardIds(db: Db, userId: string, themeId: string | undefined, limit: 
           eq(cards.userId, userId),
           eq(cards.state, CARD_STATE.new),
           eq(cards.suspended, false),
-          inTheme(themeId),
+          inScope(scope),
           sql`(${cards.direction} = 'recognition' or ${recognitionSeen})`,
         ),
       )
@@ -199,13 +216,7 @@ function newCardIds(db: Db, userId: string, themeId: string | undefined, limit: 
   );
 }
 
-function dueCardIds(
-  db: Db,
-  userId: string,
-  themeId: string | undefined,
-  now: Date,
-  limit: number,
-): string[] {
+function dueCardIds(db: Db, userId: string, scope: Scope, now: Date, limit: number): string[] {
   if (limit <= 0) return [];
   return db
     .select({ id: cards.id })
@@ -216,7 +227,7 @@ function dueCardIds(
         ne(cards.state, CARD_STATE.new),
         eq(cards.suspended, false),
         lte(cards.due, now),
-        inTheme(themeId),
+        inScope(scope),
       ),
     )
     .orderBy(asc(cards.due))
@@ -225,7 +236,7 @@ function dueCardIds(
     .map((r) => r.id);
 }
 
-function countDue(db: Db, userId: string, themeId: string | undefined, until: Date): number {
+function countDue(db: Db, userId: string, scope: Scope, until: Date): number {
   return (
     db
       .select({ n: sql<number>`count(*)` })
@@ -236,7 +247,7 @@ function countDue(db: Db, userId: string, themeId: string | undefined, until: Da
           ne(cards.state, CARD_STATE.new),
           eq(cards.suspended, false),
           lte(cards.due, until),
-          inTheme(themeId),
+          inScope(scope),
         ),
       )
       .get()?.n ?? 0
@@ -251,7 +262,7 @@ export function hydrateCards(
   now: Date,
 ): ReviewCardDto[] {
   if (!cardIds.length) return [];
-  const nativeLang = getOrCreateProfile(db, userId).nativeLang;
+  const nativeOf = nativeLangs(db, userId);
   const rows = db
     .select({ card: cards, lexeme: lexemes, own: userLexemes })
     .from(cards)
@@ -263,16 +274,17 @@ export function hydrateCards(
     .where(and(eq(cards.userId, userId), inArray(cards.id, cardIds)))
     .all();
   const lexemeIds = [...new Set(rows.map((r) => r.lexeme.id))];
+  // Words are shown with translations in their own language's translation language.
+  const nativeOfWord = new Map(rows.map((r) => [r.lexeme.id, nativeOf(r.lexeme.lang)]));
 
   const translations = new Map<string, string[]>();
   for (const t of db
     .select()
     .from(lexemeTranslations)
-    .where(
-      and(inArray(lexemeTranslations.lexemeId, lexemeIds), eq(lexemeTranslations.lang, nativeLang)),
-    )
+    .where(inArray(lexemeTranslations.lexemeId, lexemeIds))
     .orderBy(asc(lexemeTranslations.sort))
     .all()) {
+    if (t.lang !== nativeOfWord.get(t.lexemeId)) continue;
     translations.set(t.lexemeId, [...(translations.get(t.lexemeId) ?? []), t.text]);
   }
   const examples = new Map<string, ReviewCardDto['examples']>();
@@ -282,7 +294,7 @@ export function hydrateCards(
     .where(inArray(exampleSentences.lexemeId, lexemeIds))
     .orderBy(asc(exampleSentences.createdAt))
     .all()) {
-    if (e.translationLang && e.translationLang !== nativeLang) continue;
+    if (e.translationLang && e.translationLang !== nativeOfWord.get(e.lexemeId)) continue;
     const list = examples.get(e.lexemeId) ?? [];
     if (list.length < 2)
       list.push({ text: e.text, translation: e.translation, cloze: e.clozeTarget });
@@ -300,7 +312,7 @@ export function hydrateCards(
         direction: card.direction,
         isNew: card.state === CARD_STATE.new,
         lang: lexeme.lang,
-        nativeLang,
+        nativeLang: nativeOf(lexeme.lang),
         lemma: lexeme.lemma,
         pos: lexeme.pos,
         gender: lexeme.gender,
@@ -339,32 +351,41 @@ function interleave(due: string[], fresh: string[]): string[] {
   return out;
 }
 
+/** What is left of a language's daily limits. */
+function budgets(language: LanguageRow, stats: DayStats) {
+  return {
+    review: Math.max(0, language.dailyReviewLimit - (stats.reviewedToday - stats.newToday)),
+    new: Math.max(0, language.dailyNewLimit - stats.newToday),
+  };
+}
+
+/**
+ * Today's cards for a theme (in its language) or for one learning language (`lang`, default the
+ * active one), within that language's daily limits.
+ */
 export function buildQueue(
   db: Db,
   userId: string,
-  opts: { themeId?: string; tzOffset: number; limit: number },
+  opts: { themeId?: string; lang?: string; tzOffset: number; limit: number },
   now = new Date(),
 ): ReviewQueueDto {
   backfillCards(db, userId, now);
-  const profile = getOrCreateProfile(db, userId);
-  const stats = dayStats(db, userId, now, opts.tzOffset);
-  const reviewBudget = Math.max(
-    0,
-    profile.dailyReviewLimit - (stats.reviewedToday - stats.newToday),
-  );
-  const newBudget = Math.max(0, profile.dailyNewLimit - stats.newToday);
+  const language = requestLanguage(db, userId, opts);
+  const scope: Scope = { lang: language.lang, themeId: opts.themeId };
+  const stats = dayStats(db, userId, language.lang, now, opts.tzOffset);
+  const budget = budgets(language, stats);
 
-  const due = dueCardIds(db, userId, opts.themeId, now, Math.min(reviewBudget, opts.limit));
-  const fresh = newCardIds(db, userId, opts.themeId, Math.min(newBudget, opts.limit - due.length));
+  const due = dueCardIds(db, userId, scope, now, Math.min(budget.review, opts.limit));
+  const fresh = newCardIds(db, userId, scope, Math.min(budget.new, opts.limit - due.length));
   const ids = interleave(due, fresh);
 
   return {
     cards: hydrateCards(db, userId, ids, now),
-    dueCount: Math.min(countDue(db, userId, opts.themeId, now), reviewBudget),
-    newCount: newCardIds(db, userId, opts.themeId, newBudget).length,
+    dueCount: Math.min(countDue(db, userId, scope, now), budget.review),
+    newCount: newCardIds(db, userId, scope, budget.new).length,
     reviewedToday: stats.reviewedToday,
     newToday: stats.newToday,
-    limits: { newPerDay: profile.dailyNewLimit, reviewsPerDay: profile.dailyReviewLimit },
+    limits: { newPerDay: language.dailyNewLimit, reviewsPerDay: language.dailyReviewLimit },
   };
 }
 
@@ -483,20 +504,22 @@ export function streakDays(db: Db, userId: string, tzOffset: number, now = new D
   return streak;
 }
 
+/**
+ * The dashboard for one learning language (`lang`, default the active one). The streak counts
+ * every language.
+ */
 export function reviewSummary(
   db: Db,
   userId: string,
-  tzOffset: number,
+  opts: { tzOffset: number; lang?: string },
   now = new Date(),
 ): ReviewSummaryDto {
+  const { tzOffset } = opts;
   backfillCards(db, userId, now);
-  const profile = getOrCreateProfile(db, userId);
-  const stats = dayStats(db, userId, now, tzOffset);
-  const newBudget = Math.max(0, profile.dailyNewLimit - stats.newToday);
-  const reviewBudget = Math.max(
-    0,
-    profile.dailyReviewLimit - (stats.reviewedToday - stats.newToday),
-  );
+  const language = requestLanguage(db, userId, { lang: opts.lang });
+  const scope: Scope = { lang: language.lang };
+  const stats = dayStats(db, userId, language.lang, now, tzOffset);
+  const budget = budgets(language, stats);
 
   // Reviews due on each of the next 7 local days (today includes overdue cards).
   const horizon = new Date(stats.dayStart.getTime() + 7 * DAY);
@@ -509,6 +532,7 @@ export function reviewSummary(
         ne(cards.state, CARD_STATE.new),
         eq(cards.suspended, false),
         lte(cards.due, horizon),
+        inLang(language.lang),
       ),
     )
     .all();
@@ -527,21 +551,21 @@ export function reviewSummary(
   const userThemes = db
     .select({ id: themes.id, name: themes.name })
     .from(themes)
-    .where(eq(themes.userId, userId))
+    .where(and(eq(themes.userId, userId), eq(themes.targetLang, language.lang)))
     .orderBy(sql`${themes.updatedAt} desc`)
     .all();
 
   return {
-    dueNow: Math.min(countDue(db, userId, undefined, now), reviewBudget),
-    newAvailable: newCardIds(db, userId, undefined, newBudget).length,
+    dueNow: Math.min(countDue(db, userId, scope, now), budget.review),
+    newAvailable: newCardIds(db, userId, scope, budget.new).length,
     reviewedToday: stats.reviewedToday,
     streakDays: streak,
     forecast,
     themes: userThemes.map((t) => ({
       id: t.id,
       name: t.name,
-      due: countDue(db, userId, t.id, now),
-      new: newCardIds(db, userId, t.id, 1000).length,
+      due: countDue(db, userId, { ...scope, themeId: t.id }, now),
+      new: newCardIds(db, userId, { ...scope, themeId: t.id }, 1000).length,
     })),
   };
 }

@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phase 7 done: all planned phases complete** (deployable with Docker + Caddy, see [docs/deploy.md](docs/deploy.md)). Each phase ends in a usable, committed state.
+Status: **Phases 0–8 done** (v1.1.0: several learning languages; deployable with Docker + Caddy, see [docs/deploy.md](docs/deploy.md)). Next: Phase 9 (v1.2.0) once 1.1 is stable. Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -13,7 +13,7 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D2 | DB | SQLite (WAL) + Drizzle ORM + better-sqlite3 |
 | D3 | Auth | Email/password via Better Auth, cookie sessions, **invite codes** (admin-issued) |
 | D4 | API keys | Stored on the server, AES-256-GCM encrypted per user. AI calls go through the backend |
-| D5 | Languages | Per-user `target_lang` (default `pl`) + `native_lang` (e.g. `en`, `pt`). UI in English |
+| D5 | Languages | Per-user `target_lang` (default `pl`) + `native_lang` (e.g. `en`, `pt`). UI in English. Superseded by D31 (several learning languages) |
 | D6 | Word data | lemma, translation(s), POS, gender, aspect / aspect pair, grammatical forms, example sentences, pronunciation, notes / mnemonic |
 | D7 | Data sharing | Shared dictionary of lexemes. Themes, tags, SRS state and exposures are private per user |
 | D8 | SRS | FSRS (`ts-fsrs`), two cards per word (recognition and recall) |
@@ -39,6 +39,8 @@ The core loop (MVP) is done at the end of **Phase 3**.
 | D28 | Role-play transport | Plain text streaming with simple tags instead of provider-specific structured streaming, so every provider (and models that ignore the tags) works; turns are saved server-side when complete, before the stream closes; a failed turn ends the stream with `<stream-error>` and saves nothing |
 | D29 | Activity log | Per-user log page (Settings → Advanced). Failed requests and app-side problems are always kept; **advanced mode** also records every request. AI calls are shown from `ai_generations` rather than copied. Kept 14 days. No request bodies are stored |
 | D30 | Backups | Nightly copies written by the app itself with SQLite's online backup API (consistent while running, no cron or sidecar), kept 14 days on the data volume; copying them and `media/` off the server is the operator's job (documented). Litestream stays an option if continuous replication is ever needed |
+| D31 | Several learning languages | A learner has a list of learning languages (`user_languages`), one of them **active** (`user_profiles.target_lang`, kept under its old name). The translation language, daily new/review limits and voice are **per learning language**; the streak stays global. Everything outside a theme (queue, lessons, stats, theme list) is scoped to one language, passed explicitly as `lang` (default: the active one). Removing a language archives it and never deletes progress. See Phase 8 |
+| D32 | Versions & releases | One SemVer version for the whole app (root `package.json`, shown by `/api/health`), annotated `vX.Y.Z` tags and `CHANGELOG.md`. Major only when an operator must act by hand or a rollback is impossible; schema changes ship **expand → contract** across two releases. See §12 |
 
 ### Open questions (decide when we reach that phase)
 - Q1. Should themes be shareable or public between users (a theme "library")? The schema leaves room (`visibility`), but there's no UI yet.
@@ -79,12 +81,17 @@ carries the admin plugin's `role`, `banned`, `ban_reason`, `ban_expires`. App ta
 
 ```
 invite_codes        id, code (unique), created_by, max_uses, uses, expires_at, created_at
-user_profiles       user_id PK, target_lang, native_lang,
+user_profiles       user_id PK, target_lang (the active learning language, D31), native_lang,
                     default_word_count (30), default_ai_source, tts_provider, tts_voice,
                     daily_new_limit (20), daily_review_limit (200),
+                    (native_lang, tts_voice and the daily limits mirror the active language
+                    until v1.2 removes them, see §12)
                     color_palette ('auto' | preset id, default 'auto'),
                     color_mode (system|light|dark, default 'system'),
                     auto_pictures (default true), created_at, updated_at
+user_languages      user_id, lang, native_lang, daily_new_limit, daily_review_limit, tts_voice?,
+                    archived_at?, created_at, updated_at
+                    PK(user_id, lang)
 ai_credentials      id, user_id, provider (anthropic|openai|deepseek|google|openrouter|openai_compat),
                     label, base_url?, default_model, key_ciphertext, key_iv, key_tag, key_last4,
                     created_at, updated_at
@@ -270,6 +277,8 @@ the reason, and the valid rows still import.
 ### 5.4 Daily queue
 `/api/review/queue?themeId=&limit=` returns due cards first (ordered by due date and retrievability),
 then new cards up to `daily_new_limit`. The queue can be filtered by theme, or run across all themes.
+With several learning languages (D31) the queue without a theme covers one language (`lang`, default
+the active one) and uses that language's limits.
 
 ### 5.5 Exposure tracking
 Every rendered word in an exercise or script writes an `exposures` row (batched, async) and bumps
@@ -341,7 +350,7 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 
 ### 7.3 Resolution logic (`packages/shared/src/appearance/resolve.ts`, pure + unit-tested)
 - `resolvePalette(profile)`: if `color_palette !== 'auto'` use it, otherwise find the preset whose
-  `languages` include `target_lang`, falling back to `slate`.
+  `languages` include `target_lang` (the active learning language, D31), falling back to `slate`.
 - `resolveMode(color_mode, prefersDark)` → `light | dark`.
 
 ### 7.4 Persistence & first paint
@@ -537,6 +546,45 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 > `BACKUP_KEEP_DAYS`; pictures and audio are plain files to copy alongside (documented).
 > CI builds the image, starts it and checks health and the web app.
 
+
+### Phase 8: Several learning languages (v1.1.0, D31)
+Most of the model is already per language: lexemes carry `lang`, themes store their own
+`target_lang`/`native_lang`, and `core` (prompts, parser, answer checks) takes languages as
+parameters. What was single-language: the profile (one target, native, voice and set of limits)
+and the views outside a theme, which never filtered by language (queue, summary, lessons, stats,
+translation edits). Delivered on `feat/multi-language` in four steps, released together:
+
+1. **Data (no visible change)**
+   - [x] `user_languages` table + migration; a custom migration backfills one row per learner from
+     the profile, plus one for every other language found in their themes or words (with that
+     theme's translation language)
+   - [x] `lib/languages.ts`; `getOrCreateProfile()` reads the translation language, limits and voice
+     from the active language's row; profile updates write through to it and mirror it back into
+     the old profile columns (so v1.0 can be rolled back to)
+   - [x] Tests: backfill on a v1.0 database, profile read/write-through, switching languages
+2. **API scoped by language**
+   - [x] `/api/languages` (list, add, update, archive); `languages` on `MeDto`
+   - [x] `lang` on queue / summary / lessons / stats queries; an `inLang()` filter next to `inTheme()`;
+     daily budgets per language; translations in each word's own translation language
+     (`hydrateCards`, `loadPool`, stats, word edits)
+   - [x] Theme creation and proposals take the requested language instead of the profile's
+   - [x] Tests with two languages: queue isolation, budgets, stats, theme creation, translation edits
+3. **Web**
+   - [x] Language switcher in the header ("Add a language"), saved as the active language
+   - [x] Settings → Learning: list of languages with translation language, limits and voice each
+   - [x] Query keys include `lang`; the theme wizard uses the active language; theme list filtered
+   - [x] "Auto" palette and greeting follow the active language
+4. **Release**
+   - [x] PLAN/CLAUDE.md updated, `CHANGELOG.md`, version 1.1.0, migrations tested on a copy of
+     the production database, tags `v1.0.0`/`v1.1.0`, deployed (§12)
+
+**Done when** a learner can add Spanish next to Polish, switch between them, and each language has
+its own themes, queue, limits, stats, translation language and voice, with existing data intact.
+
+### Phase 9: Contract (v1.2.0)
+- [ ] Once v1.1 is stable: stop mirroring and drop `native_lang`, `tts_voice`, `daily_new_limit`,
+  `daily_review_limit` from `user_profiles` (a rollback to v1.0 is no longer possible after this)
+
 ---
 
 ## 10. Testing strategy
@@ -553,3 +601,21 @@ push notification (PWA), streaks/heatmap, and Anki CSV export.
 | Shared dictionary accumulates wrong data from one user's bad generation | Translations and examples carry the `source` and `generation_id`. Per-user edits are stored as user overrides if needed (revisit when multi-user is real) |
 | Flag-colored palettes become garish or unreadable, especially in dark mode | Curated presets only, toned-down flag hues, automated WCAG AA contrast tests per preset × mode, status never conveyed by color alone |
 | SQLite write contention | WAL mode, a single API process, short transactions. Fine for a small user base |
+
+## 12. Releases & versioning (D32)
+- **One version for the app** in the root `package.json`, following SemVer. Workspace packages are
+  private and source-only, so they stay at `0.0.0`. `APP_VERSION` is `git describe --tags --always`
+  (`v1.1.0`, or `v1.1.0-3-gabc123` for commits after the tag) and `/api/health` reports it.
+- **What bumps what**: *patch* for fixes; *minor* for features, including ones with automatic,
+  additive migrations; *major* only when an operator has to do something by hand (a new required
+  env variable, a manual data step) or a rollback to the previous version is impossible. The web
+  app and the API ship in one image, so the HTTP API is not a public contract.
+- **Expand → contract**: a release that moves data adds the new structure and keeps writing the
+  old one (expand); a later release removes the old one (contract). Until then the previous
+  image still runs on the migrated database (Drizzle's migrator just finds nothing to apply).
+- **Release steps**: feature branch with Conventional Commits → test the migrations on a copy of
+  the latest production backup → merge to `main` with `--no-ff` → bump the version and add a
+  `CHANGELOG.md` entry (Keep a Changelog) → `git tag -a vX.Y.Z` → push `main` and the tag
+  (`/update-app`) → `gh release create vX.Y.Z`.
+- **History**: v1.0.0 = Phases 0–7 (`4356be4`). v1.1.0 = Phase 8. v1.2.0 = Phase 9.
+- Later: a backup before pending migrations run on boot; release-please if releases get frequent.

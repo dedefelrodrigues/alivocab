@@ -1,4 +1,4 @@
-import { languageName } from '@alivocab/shared';
+import { languageHello, languageName } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Bot, Plus, Settings } from 'lucide-react';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ReviewSummaryCard } from '@/features/review/ReviewSummaryCard';
 import { ThemeCard } from '@/features/themes/ThemeCard';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { credentialsQuery, meQuery, themesQuery } from '@/lib/queries';
 
 export const Route = createFileRoute('/_app/')({
@@ -14,7 +15,8 @@ export const Route = createFileRoute('/_app/')({
 
 function HomePage() {
   const { data: me } = useQuery(meQuery);
-  const { data: themes } = useQuery(themesQuery);
+  const lang = useActiveLang();
+  const { data: themes } = useQuery(themesQuery(lang));
   const { data: credentials } = useQuery(credentialsQuery);
   if (!me) return null;
   const { profile } = me;
@@ -23,7 +25,9 @@ function HomePage() {
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-2xl font-bold tracking-tight">Cześć, {me.user.name}! 👋</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {languageHello(profile.targetLang)}, {me.user.name}! 👋
+        </h1>
         <p className="text-muted-foreground">
           Learning {languageName(profile.targetLang)} · translations in{' '}
           {languageName(profile.nativeLang)}

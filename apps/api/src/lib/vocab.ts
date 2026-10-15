@@ -125,11 +125,12 @@ function toSummary(theme: ThemeRow, counts: StatusCounts): ThemeSummaryDto {
   };
 }
 
-export function listThemes(db: Db, userId: string): ThemeSummaryDto[] {
+/** The user's themes in one learning language, most recently changed first. */
+export function listThemes(db: Db, userId: string, lang: string): ThemeSummaryDto[] {
   const rows = db
     .select()
     .from(themes)
-    .where(eq(themes.userId, userId))
+    .where(and(eq(themes.userId, userId), eq(themes.targetLang, lang)))
     .orderBy(sql`${themes.updatedAt} desc`)
     .all();
   const counts = countsByTheme(

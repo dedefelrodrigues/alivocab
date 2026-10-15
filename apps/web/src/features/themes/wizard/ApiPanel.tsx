@@ -66,6 +66,7 @@ export function ApiPanel({
             themeName: setup.themeName,
             description: setup.description || undefined,
             themeId: setup.themeId,
+            lang: setup.lang,
             count: setup.count,
             level: setup.level,
             credentialId: credential.id,

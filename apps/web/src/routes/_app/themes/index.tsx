@@ -1,9 +1,11 @@
+import { languageName } from '@alivocab/shared';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { BookOpen, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ThemeCard } from '@/features/themes/ThemeCard';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { themesQuery } from '@/lib/queries';
 
 export const Route = createFileRoute('/_app/themes/')({
@@ -11,12 +13,16 @@ export const Route = createFileRoute('/_app/themes/')({
 });
 
 function ThemesPage() {
-  const { data: themes, isPending } = useQuery(themesQuery);
+  const lang = useActiveLang();
+  const { data: themes, isPending } = useQuery(themesQuery(lang));
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Themes</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Themes</h1>
+          <p className="text-sm text-muted-foreground">{languageName(lang)}</p>
+        </div>
         <Button asChild>
           <Link to="/themes/new">
             <Plus /> New theme

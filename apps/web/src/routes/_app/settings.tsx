@@ -3,6 +3,7 @@ import { AccountSection } from '@/features/settings/AccountSection';
 import { AdvancedSection } from '@/features/settings/AdvancedSection';
 import { AiProvidersSection } from '@/features/settings/AiProvidersSection';
 import { AppearanceSection } from '@/features/settings/AppearanceSection';
+import { LanguagesSection } from '@/features/settings/LanguagesSection';
 import { LearningSection } from '@/features/settings/LearningSection';
 import { VoiceSection } from '@/features/settings/VoiceSection';
 
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/_app/settings')({
 });
 
 const SECTIONS = [
+  { id: 'languages', label: 'Languages' },
   { id: 'learning', label: 'Learning' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'voice', label: 'Voice' },
@@ -36,6 +38,7 @@ function SettingsPage() {
           ))}
         </nav>
       </div>
+      <LanguagesSection />
       <LearningSection />
       <AppearanceSection />
       <VoiceSection />

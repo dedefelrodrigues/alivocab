@@ -16,7 +16,6 @@ import { defaultCredentialId, openModel } from '../lib/ai-model.ts';
 import { buildLesson, recordPractice } from '../lib/lessons.ts';
 import { rateLimitPerUser } from '../lib/rate-limit.ts';
 import { validate } from '../lib/validate.ts';
-import { findOwnedTheme } from '../lib/vocab.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import type { AppDeps, AuthedEnv } from '../types.ts';
 
@@ -26,12 +25,9 @@ export const lessonRoutes = (deps: AppDeps) => {
   return (
     new Hono<AuthedEnv>()
       .use(requireAuth(auth))
-      .get('/', validate('query', lessonQuerySchema), (c) => {
-        const userId = c.get('user').id;
-        const query = c.req.valid('query');
-        if (query.themeId) findOwnedTheme(db, userId, query.themeId);
-        return c.json(buildLesson(db, userId, query));
-      })
+      .get('/', validate('query', lessonQuerySchema), (c) =>
+        c.json(buildLesson(db, c.get('user').id, c.req.valid('query'))),
+      )
       .post('/practice', validate('json', practiceResultSchema), (c) => {
         recordPractice(db, c.get('user').id, c.req.valid('json'));
         return c.json({ ok: true });

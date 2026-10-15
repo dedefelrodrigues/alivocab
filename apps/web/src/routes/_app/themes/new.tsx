@@ -9,6 +9,7 @@ import { ReviewStep } from '@/features/themes/wizard/ReviewStep';
 import { SetupCard, validateSetup } from '@/features/themes/wizard/SetupCard';
 import { SourceCard } from '@/features/themes/wizard/SourceCard';
 import type { ThemeSetup } from '@/features/themes/wizard/types';
+import { useActiveLang } from '@/hooks/useLanguages';
 import { meQuery, themeQuery } from '@/lib/queries';
 
 export const Route = createFileRoute('/_app/themes/new')({
@@ -19,9 +20,11 @@ export const Route = createFileRoute('/_app/themes/new')({
 function NewThemePage() {
   const { themeId } = Route.useSearch();
   const { data: me } = useQuery(meQuery);
+  const activeLang = useActiveLang();
   const { data: theme } = useQuery({ ...themeQuery(themeId ?? ''), enabled: !!themeId });
 
   const [setup, setSetup] = useState<ThemeSetup>({
+    lang: activeLang,
     themeName: '',
     description: '',
     count: me?.profile.defaultWordCount ?? 30,
@@ -33,7 +36,13 @@ function NewThemePage() {
 
   // When extending a theme, its name/description drive the prompt.
   const effective: ThemeSetup = theme
-    ? { ...setup, themeId: theme.id, themeName: theme.name, description: theme.description ?? '' }
+    ? {
+        ...setup,
+        lang: theme.targetLang,
+        themeId: theme.id,
+        themeName: theme.name,
+        description: theme.description ?? '',
+      }
     : setup;
 
   const ensureValid = () => {

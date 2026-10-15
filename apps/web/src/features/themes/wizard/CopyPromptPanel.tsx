@@ -1,6 +1,6 @@
 import { parseVocabulary } from '@alivocab/core';
 import type { ProposalFormat } from '@alivocab/shared';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Check, Copy, ExternalLink, Sparkles } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,8 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useLanguage } from '@/hooks/useLanguages';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { meQuery } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import type { SourceProps } from './types';
 
@@ -33,7 +33,7 @@ export function CopyPromptPanel({
   onProposal,
   initialRaw,
 }: SourceProps & { initialRaw: string | null }) {
-  const { data: me } = useQuery(meQuery);
+  const language = useLanguage(setup.lang);
   const [format, setFormat] = useState<ProposalFormat>('json');
   const [prompt, setPrompt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -41,12 +41,9 @@ export function CopyPromptPanel({
   const deferredRaw = useDeferredValue(raw);
 
   const preview = useMemo(() => {
-    if (!deferredRaw.trim() || !me) return null;
-    return parseVocabulary(deferredRaw, {
-      lang: me.profile.targetLang,
-      nativeLang: me.profile.nativeLang,
-    });
-  }, [deferredRaw, me]);
+    if (!deferredRaw.trim() || !language) return null;
+    return parseVocabulary(deferredRaw, { lang: language.lang, nativeLang: language.nativeLang });
+  }, [deferredRaw, language]);
 
   const buildPrompt = useMutation({
     mutationFn: () =>
@@ -56,6 +53,7 @@ export function CopyPromptPanel({
             themeName: setup.themeName,
             description: setup.description || undefined,
             themeId: setup.themeId,
+            lang: setup.lang,
             count: setup.count,
             level: setup.level,
             format,
@@ -75,6 +73,7 @@ export function CopyPromptPanel({
             source: 'manual',
             themeName: setup.themeName,
             themeId: setup.themeId,
+            lang: setup.lang,
             prompt: prompt ?? undefined,
           },
         }),

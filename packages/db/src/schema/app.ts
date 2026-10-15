@@ -56,7 +56,12 @@ export const userProfiles = sqliteTable('user_profiles', {
   userId: text('user_id')
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
+  /** The active learning language; its settings live in `user_languages` (PLAN.md D31). */
   targetLang: text('target_lang').notNull().default('pl'),
+  /**
+   * `nativeLang`, `ttsVoice` and the daily limits mirror the active language's row so v1.0 can
+   * still run on this database. Removed in v1.2 (PLAN.md Phase 9).
+   */
   nativeLang: text('native_lang').notNull().default('en'),
   defaultWordCount: integer('default_word_count').notNull().default(30),
   /** `'api:<credentialId>' | 'browser' | 'manual'` */
@@ -77,6 +82,25 @@ export const userProfiles = sqliteTable('user_profiles', {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/** The languages a user learns, with the settings that differ per language (PLAN.md D31). */
+export const userLanguages = sqliteTable(
+  'user_languages',
+  {
+    userId: userId(),
+    lang: text('lang').notNull(),
+    /** Language of translations and explanations while learning `lang`. */
+    nativeLang: text('native_lang').notNull(),
+    dailyNewLimit: integer('daily_new_limit').notNull().default(20),
+    dailyReviewLimit: integer('daily_review_limit').notNull().default(200),
+    ttsVoice: text('tts_voice'),
+    /** Hidden from the language switcher; words and progress are kept. */
+    archivedAt: timestamp('archived_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.lang] })],
+);
 
 export const aiCredentials = sqliteTable(
   'ai_credentials',

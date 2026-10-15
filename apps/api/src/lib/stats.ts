@@ -4,9 +4,9 @@ import type { Db } from '@alivocab/db';
 import { schema } from '@alivocab/db';
 import type { RetentionDto, StatsDto, StatusCounts, WordStatsDto } from '@alivocab/shared';
 import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { requestLanguage } from './languages.ts';
 import { resolvePictures } from './pictures/resolve.ts';
-import { getOrCreateProfile } from './profile.ts';
-import { localDateKey, startOfLocalDay, streakDays } from './srs.ts';
+import { inLang, localDateKey, startOfLocalDay, streakDays } from './srs.ts';
 
 const { cards, lexemes, lexemeTranslations, reviewLogs, themeLexemes, userLexemes } = schema;
 
@@ -14,12 +14,17 @@ const DAY = 86_400_000;
 /** Cards remembered for at least this many days count as mature. */
 const MATURE_DAYS = 21;
 
+/**
+ * Stats for a theme or one learning language (`lang`, default the active one); the streak counts
+ * every language.
+ */
 export function buildStats(
   db: Db,
   userId: string,
-  opts: { themeId?: string; tzOffset: number; days: number },
+  opts: { themeId?: string; lang?: string; tzOffset: number; days: number },
   now = new Date(),
 ): StatsDto {
+  const language = requestLanguage(db, userId, opts);
   const inTheme = (column: typeof cards.lexemeId | typeof userLexemes.lexemeId) =>
     opts.themeId
       ? inArray(
@@ -41,7 +46,12 @@ export function buildStats(
     .from(reviewLogs)
     .innerJoin(cards, eq(cards.id, reviewLogs.cardId))
     .where(
-      and(eq(reviewLogs.userId, userId), gte(reviewLogs.reviewedAt, from), inTheme(cards.lexemeId)),
+      and(
+        eq(reviewLogs.userId, userId),
+        gte(reviewLogs.reviewedAt, from),
+        inLang(language.lang),
+        inTheme(cards.lexemeId),
+      ),
     )
     .all();
 
@@ -80,10 +90,16 @@ export function buildStats(
     .select({ own: userLexemes, lexeme: lexemes })
     .from(userLexemes)
     .innerJoin(lexemes, eq(lexemes.id, userLexemes.lexemeId))
-    .where(and(eq(userLexemes.userId, userId), inTheme(userLexemes.lexemeId)))
+    .where(
+      and(
+        eq(userLexemes.userId, userId),
+        eq(lexemes.lang, language.lang),
+        inTheme(userLexemes.lexemeId),
+      ),
+    )
     .all();
   const ids = own.map((r) => r.lexeme.id);
-  const { nativeLang } = getOrCreateProfile(db, userId);
+  const { nativeLang } = language;
 
   const translations = new Map<string, string[]>();
   const reviewCounts = new Map<string, number>();

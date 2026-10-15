@@ -13,6 +13,7 @@ import {
   WORD_STATUSES,
   type WordStatus,
 } from './enums.ts';
+import { learningLangParam } from './languages.ts';
 
 export const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1'] as const;
 export type CefrLevel = (typeof CEFR_LEVELS)[number];
@@ -87,6 +88,8 @@ const themeContext = {
   description: z.string().trim().max(500).optional(),
   /** When adding words to an existing theme. */
   themeId: z.string().min(1).optional(),
+  /** Language of a new theme (default: the active one). */
+  lang: learningLangParam,
   count: z.number().int().min(5).max(MAX_WORDS_PER_REQUEST),
   level: z.enum(CEFR_LEVELS).nullable().default(null),
 };
@@ -110,6 +113,7 @@ export const importRequestSchema = z.object({
   model: z.string().trim().max(200).optional(),
   themeName: z.string().trim().max(80).optional(),
   themeId: z.string().min(1).optional(),
+  lang: learningLangParam,
   /** The prompt that produced `raw`, kept for the generation log. */
   prompt: z.string().max(50_000).optional(),
 });
@@ -129,10 +133,14 @@ export type SaveWordsRequest = z.input<typeof saveWordsSchema>;
 export const createThemeSchema = z.object({
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().max(500).optional(),
+  /** Default: the active learning language. */
+  lang: learningLangParam,
   generationId: z.string().min(1).optional(),
   words: z.array(taggedWordSchema).max(MAX_WORDS_PER_SAVE).default([]),
 });
 export type CreateThemeRequest = z.input<typeof createThemeSchema>;
+
+export const themeListQuerySchema = z.object({ lang: learningLangParam });
 
 export const themeUpdateSchema = z
   .object({

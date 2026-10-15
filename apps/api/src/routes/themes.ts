@@ -18,6 +18,7 @@ import {
   roleplaySuggestSchema,
   saveWordsSchema,
   type ThemeDetailDto,
+  themeListQuerySchema,
   themeUpdateSchema,
 } from '@alivocab/shared';
 import { and, eq } from 'drizzle-orm';
@@ -33,6 +34,7 @@ import {
   saveFill,
   wordsNeeding,
 } from '../lib/fill.ts';
+import { requestLanguage } from '../lib/languages.ts';
 import {
   listMaterials,
   MATERIAL_GENERATION_KIND,
@@ -137,11 +139,17 @@ export const themeRoutes = (deps: AppDeps) => {
   return (
     new Hono<AuthedEnv>()
       .use(requireAuth(auth))
-      .get('/', (c) => c.json(listThemes(db, c.get('user').id)))
+      // One learning language's themes (`lang`, default the active one).
+      .get('/', validate('query', themeListQuerySchema), (c) => {
+        const userId = c.get('user').id;
+        return c.json(
+          listThemes(db, userId, requestLanguage(db, userId, c.req.valid('query')).lang),
+        );
+      })
       .post('/', validate('json', createThemeSchema), (c) => {
         const userId = c.get('user').id;
         const input = c.req.valid('json');
-        const profile = getOrCreateProfile(db, userId);
+        const language = requestLanguage(db, userId, { lang: input.lang });
         const source = sourceOf(userId, input.generationId);
         const theme = db
           .insert(themes)
@@ -150,8 +158,8 @@ export const themeRoutes = (deps: AppDeps) => {
             name: input.name,
             slug: uniqueSlug(db, userId, input.name),
             description: input.description || null,
-            targetLang: profile.targetLang,
-            nativeLang: profile.nativeLang,
+            targetLang: language.lang,
+            nativeLang: language.nativeLang,
           })
           .returning()
           .get();

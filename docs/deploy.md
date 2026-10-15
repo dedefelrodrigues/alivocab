@@ -63,11 +63,14 @@ Open `https://<your domain>`, sign in as the admin, and create invite codes for 
 ```bash
 cd alivocab
 git pull
-APP_VERSION=$(git rev-parse --short HEAD) docker compose up -d --build
+APP_VERSION=$(git describe --tags --always) docker compose up -d --build
 ```
 
 Database migrations run automatically when the app starts. `https://<your domain>/api/health`
-shows the running version. Installed apps (PWA) pick up the new version the next time they open.
+shows the running version: a release tag such as `v1.1.0`, or `v1.1.0-3-gabc1234` for commits after
+it. What changed in each release is in [CHANGELOG.md](../CHANGELOG.md); read it before updating.
+To go back to the previous release, check out its tag and build again (a release says so in the
+changelog when that isn't possible). Installed apps (PWA) pick up the new version the next time they open.
 
 ## Backups
 

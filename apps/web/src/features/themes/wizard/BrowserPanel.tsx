@@ -21,8 +21,9 @@ import {
   loadEngine,
   WEBLLM_MODELS,
 } from '@/features/browser-ai/engines';
+import { useLanguage } from '@/hooks/useLanguages';
 import { api, errorMessage, unwrap } from '@/lib/api';
-import { meQuery, themeQuery } from '@/lib/queries';
+import { themeQuery } from '@/lib/queries';
 import type { SourceProps } from './types';
 
 /** Small models stay reliable with short lists, so generate in batches of this size. */
@@ -31,7 +32,7 @@ const BATCH = 10;
 type Support = { chrome: Awaited<ReturnType<typeof chromeAvailability>>; webgpu: boolean };
 
 export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
-  const { data: me } = useQuery(meQuery);
+  const language = useLanguage(setup.lang);
   const { data: theme } = useQuery({
     ...themeQuery(setup.themeId ?? ''),
     enabled: !!setup.themeId,
@@ -53,9 +54,9 @@ export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
 
   const run = useMutation({
     mutationFn: async () => {
-      if (!me) throw new Error('Not signed in');
-      const lang = theme?.targetLang ?? me.profile.targetLang;
-      const nativeLang = theme?.nativeLang ?? me.profile.nativeLang;
+      if (!language) throw new Error('Not signed in');
+      const lang = theme?.targetLang ?? language.lang;
+      const nativeLang = theme?.nativeLang ?? language.nativeLang;
 
       if (engine.current?.id !== engineId) {
         await engine.current?.dispose();
@@ -70,6 +71,7 @@ export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
           json: {
             themeName: setup.themeName,
             themeId: setup.themeId,
+            lang: setup.lang,
             count: setup.count,
             level: setup.level,
           },
@@ -112,6 +114,7 @@ export function BrowserPanel({ setup, ensureValid, onProposal }: SourceProps) {
             model: engineId,
             themeName: setup.themeName,
             themeId: setup.themeId,
+            lang: setup.lang,
           },
         }),
       );

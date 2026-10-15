@@ -8,6 +8,7 @@ import {
   type PartOfSpeech,
   type WordStatus,
 } from './enums.ts';
+import { learningLangParam } from './languages.ts';
 import type { PictureDto } from './vocab.ts';
 
 export const REVIEW_RATINGS = ['again', 'hard', 'good', 'easy'] as const;
@@ -21,11 +22,12 @@ const tzOffset = z.coerce.number().int().min(-840).max(840).default(0);
 
 export const queueQuerySchema = z.object({
   themeId: z.string().min(1).optional(),
+  lang: learningLangParam,
   tzOffset,
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
 
-export const summaryQuerySchema = z.object({ tzOffset });
+export const summaryQuerySchema = z.object({ tzOffset, lang: learningLangParam });
 
 export const gradeSchema = z.object({
   rating: z.enum(REVIEW_RATINGS),

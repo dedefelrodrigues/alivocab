@@ -1,6 +1,6 @@
 # AliVocab: Implementation Plan
 
-Status: **Phases 0–7 done** (released as v1.0.0, deployable with Docker + Caddy, see [docs/deploy.md](docs/deploy.md)). **Phase 8 (several learning languages, v1.1.0) in progress.** Each phase ends in a usable, committed state.
+Status: **Phases 0–8 done** (v1.1.0: several learning languages; deployable with Docker + Caddy, see [docs/deploy.md](docs/deploy.md)). Next: Phase 9 (v1.2.0) once 1.1 is stable. Each phase ends in a usable, committed state.
 The core loop (MVP) is done at the end of **Phase 3**.
 
 ---
@@ -574,7 +574,9 @@ translation edits). Delivered on `feat/multi-language` in four steps, released t
    - [x] Settings → Learning: list of languages with translation language, limits and voice each
    - [x] Query keys include `lang`; the theme wizard uses the active language; theme list filtered
    - [x] "Auto" palette and greeting follow the active language
-4. **Release**: PLAN/CLAUDE.md updated, `CHANGELOG.md`, version 1.1.0, tag, deploy (§12)
+4. **Release**
+   - [x] PLAN/CLAUDE.md updated, `CHANGELOG.md`, version 1.1.0, migrations tested on a copy of
+     the production database, tags `v1.0.0`/`v1.1.0`, deployed (§12)
 
 **Done when** a learner can add Spanish next to Polish, switch between them, and each language has
 its own themes, queue, limits, stats, translation language and voice, with existing data intact.
